@@ -862,7 +862,7 @@ export default function ReportPage() {
             className="lg:col-span-1"
             whileHover={{ rotateX: 2, rotateY: -2 }}
             transition={{ duration: 0.2, ease: "easeOut" }}
-            style={{ transformPerspective: 800 }}
+            style={{ perspective: 800 }}
           >
             <Card className="">
               <div className="mb-3 text-sm font-semibold">PM₂.₅ (µg/m³)</div>
@@ -895,7 +895,7 @@ export default function ReportPage() {
             className="lg:col-span-1"
             whileHover={{ rotateX: 2, rotateY: -2 }}
             transition={{ duration: 0.2, ease: "easeOut" }}
-            style={{ transformPerspective: 800 }}
+            style={{ perspective: 800 }}
           >
             <Card className="">
               <div className="mb-3 text-sm font-semibold">PM₁₀ (µg/m³)</div>
@@ -928,7 +928,7 @@ export default function ReportPage() {
             className="lg:col-span-1"
             whileHover={{ rotateX: 2, rotateY: -2 }}
             transition={{ duration: 0.2, ease: "easeOut" }}
-            style={{ transformPerspective: 800 }}
+            style={{ perspective: 800 }}
           >
             <Card className="">
               <div className="mb-3 text-sm font-semibold">CO₂ (ppm)</div>
