@@ -142,7 +142,13 @@ function Progress({ value }: { value: number }) {
   );
 }
 
-function Tag({ children, tone = "default" as "default" | "good" | "fair" | "poor" }) {
+type TagProps = {
+  children: React.ReactNode;
+  tone?: "default" | "good" | "fair" | "poor";
+};
+
+function Tag({ children, tone = "default" }: TagProps) {
+
   const classes: Record<string, string> = {
     default: "bg-slate-100 text-slate-700",
     good: "bg-emerald-100 text-emerald-700",
