@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   ResponsiveContainer,
   BarChart,
@@ -23,6 +23,7 @@ import { MetricRing } from "@/components/MetricRing";
 // - Computes Air/Water/Ether scores based on SaSo v1.1 thresholds
 // - Renders the same aesthetic you liked (snapshot → metrics → compare → action)
 // - Ozone chart REMOVED per request
+// - Enhanced with micro-interactions & motion for a premium feel
 // -----------------------------------------------------------------------------
 
 // ====== CONFIG / THEME ======
@@ -45,7 +46,6 @@ const HOUSTON_REFERENCES = {
 };
 
 // ====== THRESHOLDS (SaSo v1.1) ======
-// Each metric band provides goodMax and fairMax. Higher is worse (for all below).
 const THRESHOLDS: Record<string, { goodMax: number; fairMax: number; unit: string }> = {
   // AIR
   CO2: { goodMax: 800, fairMax: 1200, unit: "ppm" },
@@ -156,16 +156,23 @@ function Tag({ children, tone = "default" }: TagProps) {
     poor: "bg-red-100 text-red-700",
   };
   return (
-    <span
-      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${classes[tone]}`}
-    >
+    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${classes[tone]}`}>
       {children}
     </span>
   );
 }
 
 function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
-  return <div className={`rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200 ${className}`}>{children}</div>;
+  return (
+    <motion.div
+      whileHover={{ y: -2, boxShadow: "0px 8px 24px rgba(15,23,42,0.16)" }}
+      whileTap={{ scale: 0.98 }}
+      transition={{ duration: 0.25, ease: "easeOut" }}
+      className={`rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200 ${className}`}
+    >
+      {children}
+    </motion.div>
+  );
 }
 
 function Section({
@@ -211,20 +218,27 @@ function MetricCard({
   const t = THRESHOLDS[metricKey];
   const band = value == null ? "fair" : bandLabel(value, t.goodMax, t.fairMax);
   const color = bandColor(band as any);
-  const percent =
-    value == null
-      ? 0
-      : Math.min(100, (value / t.fairMax) * 100); // simple fill ratio for ring
+  const percent = value == null ? 0 : Math.min(100, (value / t.fairMax) * 100); // simple fill ratio for ring
 
   return (
-    <div className="rounded-2xl ring-1 ring-slate-200 bg-white">
+    <motion.div
+      className="rounded-2xl ring-1 ring-slate-200 bg-white"
+      whileHover={{ y: -1, boxShadow: "0px 6px 18px rgba(15,23,42,0.12)" }}
+      transition={{ duration: 0.2, ease: "easeOut" }}
+    >
       <button
         onClick={() => setOpen((v) => !v)}
         className="w-full px-4 py-3 flex items-center justify-between"
         aria-expanded={open}
       >
         <div className="flex items-center gap-3">
-          <MetricRing percent={percent} color={color} />
+          <motion.div
+            whileHover={{ rotate: 3, scale: 1.05 }}
+            whileTap={{ rotate: -3, scale: 0.97 }}
+            transition={{ type: "spring", stiffness: 260, damping: 18 }}
+          >
+            <MetricRing percent={percent} color={color} />
+          </motion.div>
           <div className="text-left">
             <div className="text-sm font-semibold text-slate-800">{label}</div>
             <div className="text-xs text-slate-500">
@@ -242,45 +256,45 @@ function MetricCard({
           </div>
         </div>
         <Tag tone={band as any}>
-          {band === "good"
-            ? "Within Range"
-            : band === "fair"
-            ? "Needs Attention"
-            : "High Risk"}
+          {band === "good" ? "Within Range" : band === "fair" ? "Needs Attention" : "High Risk"}
         </Tag>
       </button>
 
-      {open && (
-        <div className="border-t border-slate-200 px-4 py-4 text-sm">
-          <div className="grid gap-4 md:grid-cols-3">
-            <div>
-              <div className="text-xs uppercase tracking-wide text-slate-500">
-                Safe Range
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div
+            key="metric-details"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.25, ease: "easeOut" }}
+            className="border-t border-slate-200 px-4 py-4 text-sm overflow-hidden"
+          >
+            <div className="grid gap-4 md:grid-cols-3">
+              <div>
+                <div className="text-xs uppercase tracking-wide text-slate-500">Safe Range</div>
+                <div className="mt-1 text-slate-800">
+                  Good ≤ {t.goodMax}
+                  {t.unit ? ` ${t.unit}` : ""}; Fair ≤ {t.fairMax}
+                  {t.unit ? ` ${t.unit}` : ""}
+                </div>
+                {note && <div className="mt-2 text-xs text-slate-500">{note}</div>}
               </div>
-              <div className="mt-1 text-slate-800">
-                Good ≤ {t.goodMax}
-                {t.unit ? ` ${t.unit}` : ""}; Fair ≤ {t.fairMax}
-                {t.unit ? ` ${t.unit}` : ""}
+              <div className="md:col-span-2">
+                <div className="text-xs uppercase tracking-wide text-slate-500">Top Mitigation Tips</div>
+                <ul className="mt-1 list-disc pl-5 text-slate-700 space-y-1">
+                  {tips.map((tip, i) => (
+                    <li key={i}>{tip}</li>
+                  ))}
+                </ul>
               </div>
-              {note && <div className="mt-2 text-xs text-slate-500">{note}</div>}
             </div>
-            <div className="md:col-span-2">
-              <div className="text-xs uppercase tracking-wide text-slate-500">
-                Top Mitigation Tips
-              </div>
-              <ul className="mt-1 list-disc pl-5 text-slate-700 space-y-1">
-                {tips.map((t, i) => (
-                  <li key={i}>{t}</li>
-                ))}
-              </ul>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.div>
   );
 }
-
 
 // ====== PAGE COMPONENT ======
 export default function ReportPage() {
@@ -305,10 +319,7 @@ export default function ReportPage() {
       }
       setProperty(prop);
 
-      const { data: ms, error: merr } = await supabase
-        .from("measurement")
-        .select("*")
-        .eq("property_id", prop.id);
+      const { data: ms, error: merr } = await supabase.from("measurement").select("*").eq("property_id", prop.id);
 
       if (!merr && ms) setMeasurements(ms);
       setLoading(false);
@@ -357,11 +368,9 @@ export default function ReportPage() {
   const overallScore = useMemo(
     () =>
       Math.round(
-        airScore * OVERALL_WEIGHTS.air +
-          waterScore * OVERALL_WEIGHTS.water +
-          etherScore * OVERALL_WEIGHTS.ether
+        airScore * OVERALL_WEIGHTS.air + waterScore * OVERALL_WEIGHTS.water + etherScore * OVERALL_WEIGHTS.ether,
       ),
-    [airScore, waterScore, etherScore]
+    [airScore, waterScore, etherScore],
   );
 
   // Comparison chart data (remove ozone; keep PM + CO2 only)
@@ -371,7 +380,7 @@ export default function ReportPage() {
       { label: "Houston Avg", value: HOUSTON_REFERENCES.pm25Avg, color: brand.warn },
       { label: "EPA 2024 Std", value: HOUSTON_REFERENCES.pm25Benchmark, color: brand.accent },
     ],
-    [M.PM25]
+    [M.PM25],
   );
 
   const pm10Compare = useMemo(
@@ -380,7 +389,7 @@ export default function ReportPage() {
       { label: "Houston Avg", value: HOUSTON_REFERENCES.pm10Avg, color: brand.warn },
       { label: "SaSo Benchmark", value: HOUSTON_REFERENCES.pm10Benchmark, color: brand.accent },
     ],
-    [M.PM10]
+    [M.PM10],
   );
 
   const co2Compare = useMemo(
@@ -389,7 +398,7 @@ export default function ReportPage() {
       { label: "Houston Typical", value: HOUSTON_REFERENCES.co2IndoorTypical, color: brand.warn },
       { label: "SaSo Good", value: HOUSTON_REFERENCES.co2Benchmark, color: brand.accent },
     ],
-    [M.CO2]
+    [M.CO2],
   );
 
   if (loading) return <div className="p-8 text-slate-600">Loading report…</div>;
@@ -401,7 +410,13 @@ export default function ReportPage() {
       <header className="sticky top-0 z-40 border-b border-slate-200 bg-white/80 backdrop-blur print:hidden">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
           <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-600 text-white font-bold">Sa</div>
+            <motion.div
+              className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-600 text-white font-bold"
+              whileHover={{ rotate: -4, scale: 1.03 }}
+              transition={{ type: "spring", stiffness: 280, damping: 18 }}
+            >
+              Sa
+            </motion.div>
             <div>
               <div className="text-sm font-semibold tracking-wide text-slate-700">Sanctuary Solutions™</div>
               <div className="text-xs text-slate-500">Residential Home Health Report</div>
@@ -421,12 +436,15 @@ export default function ReportPage() {
               Action
             </a>
           </nav>
-          <button
+          <motion.button
             onClick={() => window.print()}
             className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-white shadow hover:bg-slate-800"
+            whileHover={{ y: -1 }}
+            whileTap={{ scale: 0.97 }}
+            transition={{ duration: 0.18 }}
           >
             Download / Print PDF
-          </button>
+          </motion.button>
         </div>
       </header>
 
@@ -447,10 +465,10 @@ export default function ReportPage() {
                   Categories tested: <strong>Air</strong> · <strong>Water</strong> · <strong>Ether</strong>
                 </p>
               </div>
-              <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:min-w-[340px]">
+              <Card className="md:min-w-[340px]">
                 <div className="text-xs uppercase tracking-wide text-slate-500">Overall Home Health</div>
                 <div className="mt-2 flex items-end justify-between">
-                  <div
+                  <motion.div
                     className="text-4xl font-bold"
                     style={{
                       color:
@@ -462,9 +480,18 @@ export default function ReportPage() {
                           ? brand.warn
                           : brand.bad,
                     }}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.6 }}
                   >
-                    {overallScore}
-                  </div>
+                    <motion.span
+                      initial={{ textShadow: "0 0 0 rgba(15,23,42,0)" }}
+                      animate={{ textShadow: "0 8px 18px rgba(15,23,42,0.25)" }}
+                      transition={{ duration: 0.8 }}
+                    >
+                      {overallScore}
+                    </motion.span>
+                  </motion.div>
                   <Tag
                     tone={
                       overallScore >= 85
@@ -488,7 +515,7 @@ export default function ReportPage() {
                 <div className="mt-3">
                   <Progress value={overallScore} />
                 </div>
-              </div>
+              </Card>
             </div>
 
             <div className="mt-6 grid gap-4 sm:grid-cols-2 md:grid-cols-4">
@@ -650,9 +677,9 @@ export default function ReportPage() {
           <Card>
             <div className="text-sm font-semibold">Why it matters</div>
             <p className="mt-2 text-sm text-slate-700">
-              Fine particles (PM₂.₅) penetrate deep into the lungs and bloodstream. Reducing everyday exposure
-              improves sleep, energy, and long-term cardiovascular health. Lowering indoor CO₂ improves alertness
-              and focus while working from home.
+              Fine particles (PM₂.₅) penetrate deep into the lungs and bloodstream. Reducing everyday exposure improves
+              sleep, energy, and long-term cardiovascular health. Lowering indoor CO₂ improves alertness and focus while
+              working from home.
             </p>
             <div className="mt-4 rounded-xl bg-blue-50 p-3 text-sm text-blue-800">
               <strong>Tip:</strong> Run the range hood while cooking; it’s the #1 daily PM source in many homes.
@@ -668,7 +695,19 @@ export default function ReportPage() {
         subtitle="Tap any metric to see safe ranges and mitigation steps."
       >
         {/* AIR */}
-        <div className="mb-4 text-xs uppercase tracking-wide text-slate-500">Air</div>
+        <motion.div
+          className="mb-4 text-xs uppercase tracking-wide text-slate-500"
+          whileHover={{ x: 4 }}
+          transition={{ duration: 0.18, ease: "easeOut" }}
+        >
+          <motion.span className="inline-block relative" whileHover={{ color: brand.primary }}>
+            Air
+            <motion.span
+              layoutId="section-underline"
+              className="absolute left-0 -bottom-1 h-[2px] w-full bg-blue-500"
+            />
+          </motion.span>
+        </motion.div>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           <MetricCard
             label="CO₂"
@@ -735,7 +774,19 @@ export default function ReportPage() {
         </div>
 
         {/* WATER */}
-        <div className="mt-10 mb-4 text-xs uppercase tracking-wide text-slate-500">Water</div>
+        <motion.div
+          className="mt-10 mb-4 text-xs uppercase tracking-wide text-slate-500"
+          whileHover={{ x: 4 }}
+          transition={{ duration: 0.18, ease: "easeOut" }}
+        >
+          <motion.span className="inline-block relative" whileHover={{ color: brand.primary }}>
+            Water
+            <motion.span
+              layoutId="section-underline"
+              className="absolute left-0 -bottom-1 h-[2px] w-full bg-blue-500"
+            />
+          </motion.span>
+        </motion.div>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           <MetricCard
             label="TDS"
@@ -761,7 +812,19 @@ export default function ReportPage() {
         </div>
 
         {/* ETHER */}
-        <div className="mt-10 mb-4 text-xs uppercase tracking-wide text-slate-500">Ether</div>
+        <motion.div
+          className="mt-10 mb-4 text-xs uppercase tracking-wide text-slate-500"
+          whileHover={{ x: 4 }}
+          transition={{ duration: 0.18, ease: "easeOut" }}
+        >
+          <motion.span className="inline-block relative" whileHover={{ color: brand.primary }}>
+            Ether
+            <motion.span
+              layoutId="section-underline"
+              className="absolute left-0 -bottom-1 h-[2px] w-full bg-blue-500"
+            />
+          </motion.span>
+        </motion.div>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           <MetricCard
             label="Magnetic Field"
@@ -795,91 +858,103 @@ export default function ReportPage() {
       >
         <div className="grid gap-6 lg:grid-cols-3">
           {/* PM2.5 */}
-          <Card className="lg:col-span-1">
-            <div className="mb-3 text-sm font-semibold">PM₂.₅ (µg/m³)</div>
-            <div className="h-64 w-full">
-              <ResponsiveContainer>
-                <BarChart data={pm25Compare} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                  <XAxis dataKey="label" tick={{ fontSize: 12 }} />
-                  <YAxis tick={{ fontSize: 12 }} domain={[0, Math.max(18, (M.PM25 ?? 0) + 3)]} />
-                  <Tooltip
-                    formatter={(v: number) => `${v} µg/m³`}
-                    cursor={{ fill: "rgba(2,6,23,0.03)" }}
-                  />
-                  <ReferenceLine
-                    y={HOUSTON_REFERENCES.pm25Benchmark}
-                    stroke={brand.accent}
-                    strokeDasharray="4 4"
-                    label={{ position: "right", value: "EPA 2024 Std (9)" }}
-                  />
-                  <Bar dataKey="value" radius={[6, 6, 0, 0]}>
-                    {pm25Compare.map((entry, i) => (
-                      <Cell key={`c-${i}`} fill={entry.color} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </Card>
+          <motion.div
+            className="lg:col-span-1"
+            whileHover={{ rotateX: 2, rotateY: -2 }}
+            transition={{ duration: 0.2, ease: "easeOut" }}
+            style={{ transformPerspective: 800 }}
+          >
+            <Card className="">
+              <div className="mb-3 text-sm font-semibold">PM₂.₅ (µg/m³)</div>
+              <div className="h-64 w-full">
+                <ResponsiveContainer>
+                  <BarChart data={pm25Compare} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                    <XAxis dataKey="label" tick={{ fontSize: 12 }} />
+                    <YAxis tick={{ fontSize: 12 }} domain={[0, Math.max(18, (M.PM25 ?? 0) + 3)]} />
+                    <Tooltip formatter={(v: number) => `${v} µg/m³`} cursor={{ fill: "rgba(2,6,23,0.03)" }} />
+                    <ReferenceLine
+                      y={HOUSTON_REFERENCES.pm25Benchmark}
+                      stroke={brand.accent}
+                      strokeDasharray="4 4"
+                      label={{ position: "right", value: "EPA 2024 Std (9)" }}
+                    />
+                    <Bar dataKey="value" radius={[6, 6, 0, 0]}>
+                      {pm25Compare.map((entry, i) => (
+                        <Cell key={`c-${i}`} fill={entry.color} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </Card>
+          </motion.div>
 
           {/* PM10 */}
-          <Card className="lg:col-span-1">
-            <div className="mb-3 text-sm font-semibold">PM₁₀ (µg/m³)</div>
-            <div className="h-64 w-full">
-              <ResponsiveContainer>
-                <BarChart data={pm10Compare} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                  <XAxis dataKey="label" tick={{ fontSize: 12 }} />
-                  <YAxis tick={{ fontSize: 12 }} domain={[0, Math.max(60, (M.PM10 ?? 0) + 10)]} />
-                  <Tooltip
-                    formatter={(v: number) => `${v} µg/m³`}
-                    cursor={{ fill: "rgba(2,6,23,0.03)" }}
-                  />
-                  <ReferenceLine
-                    y={HOUSTON_REFERENCES.pm10Benchmark}
-                    stroke={brand.accent}
-                    strokeDasharray="4 4"
-                    label={{ position: "right", value: "SaSo Benchmark (30)" }}
-                  />
-                  <Bar dataKey="value" radius={[6, 6, 0, 0]}>
-                    {pm10Compare.map((entry, i) => (
-                      <Cell key={`c-${i}`} fill={entry.color} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </Card>
+          <motion.div
+            className="lg:col-span-1"
+            whileHover={{ rotateX: 2, rotateY: -2 }}
+            transition={{ duration: 0.2, ease: "easeOut" }}
+            style={{ transformPerspective: 800 }}
+          >
+            <Card className="">
+              <div className="mb-3 text-sm font-semibold">PM₁₀ (µg/m³)</div>
+              <div className="h-64 w-full">
+                <ResponsiveContainer>
+                  <BarChart data={pm10Compare} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                    <XAxis dataKey="label" tick={{ fontSize: 12 }} />
+                    <YAxis tick={{ fontSize: 12 }} domain={[0, Math.max(60, (M.PM10 ?? 0) + 10)]} />
+                    <Tooltip formatter={(v: number) => `${v} µg/m³`} cursor={{ fill: "rgba(2,6,23,0.03)" }} />
+                    <ReferenceLine
+                      y={HOUSTON_REFERENCES.pm10Benchmark}
+                      stroke={brand.accent}
+                      strokeDasharray="4 4"
+                      label={{ position: "right", value: "SaSo Benchmark (30)" }}
+                    />
+                    <Bar dataKey="value" radius={[6, 6, 0, 0]}>
+                      {pm10Compare.map((entry, i) => (
+                        <Cell key={`c-${i}`} fill={entry.color} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </Card>
+          </motion.div>
 
           {/* CO2 */}
-          <Card className="lg:col-span-1">
-            <div className="mb-3 text-sm font-semibold">CO₂ (ppm)</div>
-            <div className="h-64 w-full">
-              <ResponsiveContainer>
-                <BarChart data={co2Compare} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                  <XAxis dataKey="label" tick={{ fontSize: 12 }} />
-                  <YAxis
-                    tick={{ fontSize: 12 }}
-                    domain={[0, Math.max(1600, (M.CO2 ?? 0) + 200)]}
-                  />
-                  <Tooltip formatter={(v: number) => `${v} ppm`} cursor={{ fill: "rgba(2,6,23,0.03)" }} />
-                  <ReferenceLine
-                    y={HOUSTON_REFERENCES.co2Benchmark}
-                    stroke={brand.accent}
-                    strokeDasharray="4 4"
-                    label={{ position: "right", value: "SaSo Good (≤800)" }}
-                  />
-                  <Bar dataKey="value" radius={[6, 6, 0, 0]}>
-                    {co2Compare.map((entry, i) => (
-                      <Cell key={`c-${i}`} fill={entry.color} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </Card>
+          <motion.div
+            className="lg:col-span-1"
+            whileHover={{ rotateX: 2, rotateY: -2 }}
+            transition={{ duration: 0.2, ease: "easeOut" }}
+            style={{ transformPerspective: 800 }}
+          >
+            <Card className="">
+              <div className="mb-3 text-sm font-semibold">CO₂ (ppm)</div>
+              <div className="h-64 w-full">
+                <ResponsiveContainer>
+                  <BarChart data={co2Compare} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                    <XAxis dataKey="label" tick={{ fontSize: 12 }} />
+                    <YAxis tick={{ fontSize: 12 }} domain={[0, Math.max(1600, (M.CO2 ?? 0) + 200)]} />
+                    <Tooltip formatter={(v: number) => `${v} ppm`} cursor={{ fill: "rgba(2,6,23,0.03)" }} />
+                    <ReferenceLine
+                      y={HOUSTON_REFERENCES.co2Benchmark}
+                      stroke={brand.accent}
+                      strokeDasharray="4 4"
+                      label={{ position: "right", value: "SaSo Good (≤800)" }}
+                    />
+                    <Bar dataKey="value" radius={[6, 6, 0, 0]}>
+                      {co2Compare.map((entry, i) => (
+                        <Cell key={`c-${i}`} fill={entry.color} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </Card>
+          </motion.div>
         </div>
       </Section>
 
@@ -941,12 +1016,20 @@ export default function ReportPage() {
               Add your affiliate URLs later; this section will auto-link items for one-click purchase.
             </p>
             <div className="mt-4 flex flex-wrap gap-3">
-              <button className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow hover:bg-blue-700">
+              <motion.button
+                className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow hover:bg-blue-700"
+                whileHover={{ y: -1 }}
+                whileTap={{ scale: 0.97 }}
+              >
                 Book Re-Test
-              </button>
-              <button className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+              </motion.button>
+              <motion.button
+                className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                whileHover={{ y: -1 }}
+                whileTap={{ scale: 0.97 }}
+              >
                 Chat with a Technician
-              </button>
+              </motion.button>
             </div>
           </Card>
         </div>
