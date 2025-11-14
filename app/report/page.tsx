@@ -11,12 +11,13 @@ import {
   CartesianGrid,
   Tooltip,
   ReferenceLine,
+  Cell,
 } from "recharts";
 import { supabase } from "@/lib/supabaseClient";
 import { MetricRing } from "@/components/MetricRing";
 
 // -----------------------------------------------------------------------------
-// Sanctuary Solutions – LIVE Dashboard Report (Supabase‑wired)
+// Sanctuary Solutions – LIVE Dashboard Report (Supabase-wired)
 // Route: /app/report/page.tsx  (App Router)
 // - Pulls latest property + measurements from Supabase
 // - Computes Air/Water/Ether scores based on SaSo v1.1 thresholds
@@ -56,7 +57,7 @@ const THRESHOLDS: Record<string, { goodMax: number; fairMax: number; unit: strin
   // WATER
   TDS: { goodMax: 300, fairMax: 500, unit: "ppm" },
   Cl: { goodMax: 0.8, fairMax: 1.5, unit: "ppm" },
-  pH: { goodMax: 8.5, fairMax: 9.5, unit: "" }, // Note: handle two‑sided ideal in copy
+  pH: { goodMax: 8.5, fairMax: 9.5, unit: "" }, // Note: handle two-sided ideal in copy
   // ETHER (precautionary bands)
   MagField: { goodMax: 2.0, fairMax: 4.0, unit: "mG" },
   ElectricField: { goodMax: 0.5, fairMax: 1.5, unit: "V/m" },
@@ -131,7 +132,7 @@ function weightedCategoryScore(values: Record<string, number>, weights: Record<s
   return wsum > 0 ? Math.round(sum / wsum) : 0;
 }
 
-// ====== UI SUB‑COMPONENTS ======
+// ====== UI SUB-COMPONENTS ======
 function Progress({ value }: { value: number }) {
   const clamped = Math.max(0, Math.min(100, value));
   const tone = clamped >= 85 ? "good" : clamped >= 70 ? "fair" : clamped >= 50 ? "fair" : "poor";
@@ -148,21 +149,36 @@ type TagProps = {
 };
 
 function Tag({ children, tone = "default" }: TagProps) {
-
   const classes: Record<string, string> = {
     default: "bg-slate-100 text-slate-700",
     good: "bg-emerald-100 text-emerald-700",
     fair: "bg-amber-100 text-amber-700",
     poor: "bg-red-100 text-red-700",
   };
-  return <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${classes[tone]}`}>{children}</span>;
+  return (
+    <span
+      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${classes[tone]}`}
+    >
+      {children}
+    </span>
+  );
 }
 
 function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return <div className={`rounded-2xl bg-white p-6 shadow-sm ring-1 ring-slate-200 ${className}`}>{children}</div>;
 }
 
-function Section({ id, title, subtitle, children }: { id: string; title: string; subtitle?: string; children: React.ReactNode }) {
+function Section({
+  id,
+  title,
+  subtitle,
+  children,
+}: {
+  id: string;
+  title: string;
+  subtitle?: string;
+  children: React.ReactNode;
+}) {
   return (
     <section id={id} className="scroll-mt-24 py-12">
       <div className="mx-auto max-w-6xl px-4">
@@ -322,7 +338,7 @@ export default function ReportPage() {
     return m;
   }, [measurements]);
 
-  // Compute per‑metric scores
+  // Compute per-metric scores
   const metricScores = useMemo(() => {
     const s: Record<string, number> = {};
     for (const k of Object.keys(THRESHOLDS)) {
@@ -338,26 +354,43 @@ export default function ReportPage() {
   const airScore = useMemo(() => weightedCategoryScore(metricScores, WEIGHTS_AIR), [metricScores]);
   const waterScore = useMemo(() => weightedCategoryScore(metricScores, WEIGHTS_WATER), [metricScores]);
   const etherScore = useMemo(() => weightedCategoryScore(metricScores, WEIGHTS_ETHER), [metricScores]);
-  const overallScore = useMemo(() => Math.round(airScore * OVERALL_WEIGHTS.air + waterScore * OVERALL_WEIGHTS.water + etherScore * OVERALL_WEIGHTS.ether), [airScore, waterScore, etherScore]);
+  const overallScore = useMemo(
+    () =>
+      Math.round(
+        airScore * OVERALL_WEIGHTS.air +
+          waterScore * OVERALL_WEIGHTS.water +
+          etherScore * OVERALL_WEIGHTS.ether
+      ),
+    [airScore, waterScore, etherScore]
+  );
 
   // Comparison chart data (remove ozone; keep PM + CO2 only)
-  const pm25Compare = useMemo(() => [
-    { label: "Your Home", value: M.PM25 ?? 0, color: brand.bad },
-    { label: "Houston Avg", value: HOUSTON_REFERENCES.pm25Avg, color: brand.warn },
-    { label: "EPA 2024 Std", value: HOUSTON_REFERENCES.pm25Benchmark, color: brand.accent },
-  ], [M.PM25]);
+  const pm25Compare = useMemo(
+    () => [
+      { label: "Your Home", value: M.PM25 ?? 0, color: brand.bad },
+      { label: "Houston Avg", value: HOUSTON_REFERENCES.pm25Avg, color: brand.warn },
+      { label: "EPA 2024 Std", value: HOUSTON_REFERENCES.pm25Benchmark, color: brand.accent },
+    ],
+    [M.PM25]
+  );
 
-  const pm10Compare = useMemo(() => [
-    { label: "Your Home", value: M.PM10 ?? 0, color: brand.bad },
-    { label: "Houston Avg", value: HOUSTON_REFERENCES.pm10Avg, color: brand.warn },
-    { label: "SaSo Benchmark", value: HOUSTON_REFERENCES.pm10Benchmark, color: brand.accent },
-  ], [M.PM10]);
+  const pm10Compare = useMemo(
+    () => [
+      { label: "Your Home", value: M.PM10 ?? 0, color: brand.bad },
+      { label: "Houston Avg", value: HOUSTON_REFERENCES.pm10Avg, color: brand.warn },
+      { label: "SaSo Benchmark", value: HOUSTON_REFERENCES.pm10Benchmark, color: brand.accent },
+    ],
+    [M.PM10]
+  );
 
-  const co2Compare = useMemo(() => [
-    { label: "Your Home", value: M.CO2 ?? 0, color: brand.bad },
-    { label: "Houston Typical", value: HOUSTON_REFERENCES.co2IndoorTypical, color: brand.warn },
-    { label: "SaSo Good", value: HOUSTON_REFERENCES.co2Benchmark, color: brand.accent },
-  ], [M.CO2]);
+  const co2Compare = useMemo(
+    () => [
+      { label: "Your Home", value: M.CO2 ?? 0, color: brand.bad },
+      { label: "Houston Typical", value: HOUSTON_REFERENCES.co2IndoorTypical, color: brand.warn },
+      { label: "SaSo Good", value: HOUSTON_REFERENCES.co2Benchmark, color: brand.accent },
+    ],
+    [M.CO2]
+  );
 
   if (loading) return <div className="p-8 text-slate-600">Loading report…</div>;
   if (!property) return <div className="p-8 text-red-600">No property found. Add a property in Supabase first.</div>;
@@ -375,12 +408,25 @@ export default function ReportPage() {
             </div>
           </div>
           <nav className="hidden gap-6 md:flex">
-            <a href="#snapshot" className="text-sm text-slate-600 hover:text-slate-900">Snapshot</a>
-            <a href="#expandables" className="text-sm text-slate-600 hover:text-slate-900">Metrics</a>
-            <a href="#compare" className="text-sm text-slate-600 hover:text-slate-900">Compare</a>
-            <a href="#action" className="text-sm text-slate-600 hover:text-slate-900">Action</a>
+            <a href="#snapshot" className="text-sm text-slate-600 hover:text-slate-900">
+              Snapshot
+            </a>
+            <a href="#expandables" className="text-sm text-slate-600 hover:text-slate-900">
+              Metrics
+            </a>
+            <a href="#compare" className="text-sm text-slate-600 hover:text-slate-900">
+              Compare
+            </a>
+            <a href="#action" className="text-sm text-slate-600 hover:text-slate-900">
+              Action
+            </a>
           </nav>
-          <button onClick={() => window.print()} className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-white shadow hover:bg-slate-800">Download / Print PDF</button>
+          <button
+            onClick={() => window.print()}
+            className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-white shadow hover:bg-slate-800"
+          >
+            Download / Print PDF
+          </button>
         </div>
       </header>
 
@@ -391,15 +437,52 @@ export default function ReportPage() {
             <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
               <div>
                 <h1 className="text-3xl font-bold tracking-tight">Home Health Report</h1>
-                <p className="mt-1 text-slate-600">Most recent property · {new Date(property.created_at).toLocaleDateString()} · {property.city ?? ""}{property.city ? ", " : ""}{property.state ?? ""}</p>
-                <p className="mt-2 text-slate-700">Categories tested: <strong>Air</strong> · <strong>Water</strong> · <strong>Ether</strong></p>
+                <p className="mt-1 text-slate-600">
+                  Most recent property · {new Date(property.created_at).toLocaleDateString()} ·{" "}
+                  {property.city ?? ""}
+                  {property.city ? ", " : ""}
+                  {property.state ?? ""}
+                </p>
+                <p className="mt-2 text-slate-700">
+                  Categories tested: <strong>Air</strong> · <strong>Water</strong> · <strong>Ether</strong>
+                </p>
               </div>
               <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:min-w-[340px]">
                 <div className="text-xs uppercase tracking-wide text-slate-500">Overall Home Health</div>
                 <div className="mt-2 flex items-end justify-between">
-                  <div className="text-4xl font-bold" style={{ color: overallScore >= 85 ? brand.good : overallScore >= 70 ? brand.accent : overallScore >= 50 ? brand.warn : brand.bad }}>{overallScore}</div>
-                  <Tag tone={overallScore >= 85 ? "good" : overallScore >= 70 ? "fair" : overallScore >= 50 ? "fair" : "poor"}>
-                    {overallScore >= 85 ? "Excellent" : overallScore >= 70 ? "Good" : overallScore >= 50 ? "Moderate" : "Poor"}
+                  <div
+                    className="text-4xl font-bold"
+                    style={{
+                      color:
+                        overallScore >= 85
+                          ? brand.good
+                          : overallScore >= 70
+                          ? brand.accent
+                          : overallScore >= 50
+                          ? brand.warn
+                          : brand.bad,
+                    }}
+                  >
+                    {overallScore}
+                  </div>
+                  <Tag
+                    tone={
+                      overallScore >= 85
+                        ? "good"
+                        : overallScore >= 70
+                        ? "fair"
+                        : overallScore >= 50
+                        ? "fair"
+                        : "poor"
+                    }
+                  >
+                    {overallScore >= 85
+                      ? "Excellent"
+                      : overallScore >= 70
+                      ? "Good"
+                      : overallScore >= 50
+                      ? "Moderate"
+                      : "Poor"}
                   </Tag>
                 </div>
                 <div className="mt-3">
@@ -411,11 +494,18 @@ export default function ReportPage() {
             <div className="mt-6 grid gap-4 sm:grid-cols-2 md:grid-cols-4">
               <Card>
                 <div className="text-xs uppercase tracking-wide text-slate-500">Address</div>
-                <div className="mt-1 text-sm font-medium">{property.address}{property.city ? ", " + property.city : ""}{property.state ? ", " + property.state : ""} {property.zip ?? ""}</div>
+                <div className="mt-1 text-sm font-medium">
+                  {property.address}
+                  {property.city ? ", " + property.city : ""}
+                  {property.state ? ", " + property.state : ""} {property.zip ?? ""}
+                </div>
               </Card>
               <Card>
                 <div className="text-xs uppercase tracking-wide text-slate-500">Home Details</div>
-                <div className="mt-1 text-sm font-medium">{property.sqft ? `${property.sqft.toLocaleString()} sq ft` : "—"} · Built {property.year_built ?? "—"}</div>
+                <div className="mt-1 text-sm font-medium">
+                  {property.sqft ? `${property.sqft.toLocaleString()} sq ft` : "—"} · Built{" "}
+                  {property.year_built ?? "—"}
+                </div>
               </Card>
               <Card>
                 <div className="text-xs uppercase tracking-wide text-slate-500">Contact</div>
@@ -423,7 +513,9 @@ export default function ReportPage() {
               </Card>
               <Card>
                 <div className="text-xs uppercase tracking-wide text-slate-500">Download</div>
-                <div className="mt-1 text-sm">Use the <em>Download / Print PDF</em> button above to save this report.</div>
+                <div className="mt-1 text-sm">
+                  Use the <em>Download / Print PDF</em> button above to save this report.
+                </div>
               </Card>
             </div>
           </motion.div>
@@ -431,7 +523,11 @@ export default function ReportPage() {
       </section>
 
       {/* PAGE 1 – SNAPSHOT */}
-      <Section id="snapshot" title="Your Home Health Snapshot" subtitle="A concise view of what we measured and what it means.">
+      <Section
+        id="snapshot"
+        title="Your Home Health Snapshot"
+        subtitle="A concise view of what we measured and what it means."
+      >
         <div className="grid gap-6 lg:grid-cols-3">
           <Card className="lg:col-span-2">
             <div className="grid gap-6 md:grid-cols-3">
@@ -439,26 +535,81 @@ export default function ReportPage() {
                 <div className="mb-2 text-sm font-semibold">Air Quality</div>
                 <Progress value={airScore} />
                 <ul className="mt-3 space-y-1 text-sm text-slate-700">
-                  <li>PM₂.₅: <strong>{M.PM25 ?? "—"} µg/m³</strong></li>
-                  <li>CO₂ peak: <strong>{M.CO2 ?? "—"} ppm</strong></li>
-                  <li>Status: <Tag tone={(M.PM25 != null ? (M.PM25 <= THRESHOLDS.PM25.goodMax ? "good" : M.PM25 <= THRESHOLDS.PM25.fairMax ? "fair" : "poor") : "fair") as any}>Auto‑scored</Tag></li>
+                  <li>
+                    PM₂.₅: <strong>{M.PM25 ?? "—"} µg/m³</strong>
+                  </li>
+                  <li>
+                    CO₂ peak: <strong>{M.CO2 ?? "—"} ppm</strong>
+                  </li>
+                  <li>
+                    Status:{" "}
+                    <Tag
+                      tone={
+                        (M.PM25 != null
+                          ? M.PM25 <= THRESHOLDS.PM25.goodMax
+                            ? "good"
+                            : M.PM25 <= THRESHOLDS.PM25.fairMax
+                            ? "fair"
+                            : "poor"
+                          : "fair") as any
+                      }
+                    >
+                      Auto-scored
+                    </Tag>
+                  </li>
                 </ul>
               </div>
               <div>
                 <div className="mb-2 text-sm font-semibold">Water Quality</div>
                 <Progress value={waterScore} />
                 <ul className="mt-3 space-y-1 text-sm text-slate-700">
-                  <li>TDS: <strong>{M.TDS ?? "—"} ppm</strong></li>
-                  <li>Free Chlorine: <strong>{M.Cl ?? "—"} ppm</strong></li>
-                  <li>Status: <Tag tone={(M.TDS != null ? (M.TDS <= THRESHOLDS.TDS.goodMax ? "good" : M.TDS <= THRESHOLDS.TDS.fairMax ? "fair" : "poor") : "fair") as any}>Auto‑scored</Tag></li>
+                  <li>
+                    TDS: <strong>{M.TDS ?? "—"} ppm</strong>
+                  </li>
+                  <li>
+                    Free Chlorine: <strong>{M.Cl ?? "—"} ppm</strong>
+                  </li>
+                  <li>
+                    Status:{" "}
+                    <Tag
+                      tone={
+                        (M.TDS != null
+                          ? M.TDS <= THRESHOLDS.TDS.goodMax
+                            ? "good"
+                            : M.TDS <= THRESHOLDS.TDS.fairMax
+                            ? "fair"
+                            : "poor"
+                          : "fair") as any
+                      }
+                    >
+                      Auto-scored
+                    </Tag>
+                  </li>
                 </ul>
               </div>
               <div>
                 <div className="mb-2 text-sm font-semibold">Ether (EMF)</div>
                 <Progress value={etherScore} />
                 <ul className="mt-3 space-y-1 text-sm text-slate-700">
-                  <li>Mag Field (bedroom): <strong>{M.MagField ?? "—"} mG</strong></li>
-                  <li>Status: <Tag tone={(M.MagField != null ? (M.MagField <= THRESHOLDS.MagField.goodMax ? "good" : M.MagField <= THRESHOLDS.MagField.fairMax ? "fair" : "poor") : "fair") as any}>Auto‑scored</Tag></li>
+                  <li>
+                    Mag Field (bedroom): <strong>{M.MagField ?? "—"} mG</strong>
+                  </li>
+                  <li>
+                    Status:{" "}
+                    <Tag
+                      tone={
+                        (M.MagField != null
+                          ? M.MagField <= THRESHOLDS.MagField.goodMax
+                            ? "good"
+                            : M.MagField <= THRESHOLDS.MagField.fairMax
+                            ? "fair"
+                            : "poor"
+                          : "fair") as any
+                      }
+                    >
+                      Auto-scored
+                    </Tag>
+                  </li>
                 </ul>
               </div>
             </div>
@@ -469,20 +620,27 @@ export default function ReportPage() {
               <div>
                 <div className="text-xs uppercase tracking-wide text-slate-500">Notable Risks</div>
                 <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-700">
-                  <li>PM₂.₅ target is ≤ {THRESHOLDS.PM25.goodMax} µg/m³ (EPA 2024). Your reading: {M.PM25 ?? "—"}.</li>
+                  <li>
+                    PM₂.₅ target is ≤ {THRESHOLDS.PM25.goodMax} µg/m³ (EPA 2024). Your reading: {M.PM25 ?? "—"}.
+                  </li>
                   <li>CO₂ above {THRESHOLDS.CO2.goodMax} ppm signals insufficient fresh air during occupancy.</li>
-                  <li>Water TDS {M.TDS ?? "—"} ppm may affect taste and scaling &gt; {THRESHOLDS.TDS.goodMax} ppm.</li>
+                  <li>
+                    Water TDS {M.TDS ?? "—"} ppm may affect taste and scaling &gt; {THRESHOLDS.TDS.goodMax} ppm.
+                  </li>
                 </ul>
               </div>
               <div>
                 <div className="text-xs uppercase tracking-wide text-slate-500">Sanctuary Impact</div>
-                <p className="mt-2 text-sm text-slate-700">With targeted mitigation, we estimate <strong>≈65% reduction</strong> in fine‑particle exposure and <strong>≈40% lower</strong> daytime CO₂ peaks.</p>
+                <p className="mt-2 text-sm text-slate-700">
+                  With targeted mitigation, we estimate <strong>≈65% reduction</strong> in fine-particle exposure and{" "}
+                  <strong>≈40% lower</strong> daytime CO₂ peaks.
+                </p>
               </div>
               <div>
                 <div className="text-xs uppercase tracking-wide text-slate-500">Top 3 Next Steps</div>
                 <ol className="mt-2 list-decimal space-y-1 pl-5 text-sm text-slate-700">
                   <li>Deploy HEPA H13 purifier (living room).</li>
-                  <li>Install under‑sink carbon + RO filter.</li>
+                  <li>Install under-sink carbon + RO filter.</li>
                   <li>Refresh airflow 10 min/hr while occupied.</li>
                 </ol>
               </div>
@@ -491,7 +649,11 @@ export default function ReportPage() {
 
           <Card>
             <div className="text-sm font-semibold">Why it matters</div>
-            <p className="mt-2 text-sm text-slate-700">Fine particles (PM₂.₅) penetrate deep into the lungs and bloodstream. Reducing everyday exposure improves sleep, energy, and long‑term cardiovascular health. Lowering indoor CO₂ improves alertness and focus while working from home.</p>
+            <p className="mt-2 text-sm text-slate-700">
+              Fine particles (PM₂.₅) penetrate deep into the lungs and bloodstream. Reducing everyday exposure
+              improves sleep, energy, and long-term cardiovascular health. Lowering indoor CO₂ improves alertness
+              and focus while working from home.
+            </p>
             <div className="mt-4 rounded-xl bg-blue-50 p-3 text-sm text-blue-800">
               <strong>Tip:</strong> Run the range hood while cooking; it’s the #1 daily PM source in many homes.
             </div>
@@ -500,37 +662,137 @@ export default function ReportPage() {
       </Section>
 
       {/* PAGE 2 – METRICS (expandables) */}
-      <Section id="expandables" title="Detailed Metrics" subtitle="Tap any metric to see safe ranges and mitigation steps.">
+      <Section
+        id="expandables"
+        title="Detailed Metrics"
+        subtitle="Tap any metric to see safe ranges and mitigation steps."
+      >
         {/* AIR */}
         <div className="mb-4 text-xs uppercase tracking-wide text-slate-500">Air</div>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          <MetricCard label="CO₂" value={M.CO2} unit="ppm" metricKey="CO2" tips={["Introduce 10‑minute fresh‑air cycles per hour while occupied.", "Use ERV/HRV or timed HVAC fan for consistent air changes.", "Add occupancy‑based ventilation in office/bedrooms."]} />
-          <MetricCard label="PM₂.₅" value={M.PM25} unit="µg/m³" metricKey="PM25" tips={["Upgrade HVAC filter to MERV‑13+ and seal bypass gaps.", "Run a HEPA purifier in main living and bedrooms (ACH ≥ 4/hr).", "Use vent hood while cooking; lids on pans."]} />
-          <MetricCard label="PM₁₀" value={M.PM10} unit="µg/m³" metricKey="PM10" tips={["Vacuum with sealed HEPA; damp dust weekly.", "Check door/window weather‑seals; manage pet dander.", "Isolate renovations; limit sanding indoors."]} />
-          <MetricCard label="VOCs" value={M.VOCs} unit="ppb" metricKey="VOCs" tips={["Switch to low/zero‑VOC products and fragrance‑free cleaners.", "Use carbon media purifiers; boost ventilation after cleaning.", "Bake‑out new furniture with windows open for several hours."]} />
-          <MetricCard label="Humidity" value={M.Humidity} unit="%" metricKey="Humidity" tips={["Dehumidify in summer; run bath fans 20 min after showers.", "Fix leaks quickly; insulate cold surfaces to prevent condensation."]} note="Comfort zone 35–55%." />
-          <MetricCard label="Temperature" value={M.Temp} unit="°F" metricKey="Temp" tips={["Tune supply/return balance; use ceiling fans to feel cooler at higher setpoints."]} />
+          <MetricCard
+            label="CO₂"
+            value={M.CO2}
+            unit="ppm"
+            metricKey="CO2"
+            tips={[
+              "Introduce 10-minute fresh-air cycles per hour while occupied.",
+              "Use ERV/HRV or timed HVAC fan for consistent air changes.",
+              "Add occupancy-based ventilation in office/bedrooms.",
+            ]}
+          />
+          <MetricCard
+            label="PM₂.₅"
+            value={M.PM25}
+            unit="µg/m³"
+            metricKey="PM25"
+            tips={[
+              "Upgrade HVAC filter to MERV-13+ and seal bypass gaps.",
+              "Run a HEPA purifier in main living and bedrooms (ACH ≥ 4/hr).",
+              "Use vent hood while cooking; lids on pans.",
+            ]}
+          />
+          <MetricCard
+            label="PM₁₀"
+            value={M.PM10}
+            unit="µg/m³"
+            metricKey="PM10"
+            tips={[
+              "Vacuum with sealed HEPA; damp dust weekly.",
+              "Check door/window weather-seals; manage pet dander.",
+              "Isolate renovations; limit sanding indoors.",
+            ]}
+          />
+          <MetricCard
+            label="VOCs"
+            value={M.VOCs}
+            unit="ppb"
+            metricKey="VOCs"
+            tips={[
+              "Switch to low/zero-VOC products and fragrance-free cleaners.",
+              "Use carbon media purifiers; boost ventilation after cleaning.",
+              "Bake-out new furniture with windows open for several hours.",
+            ]}
+          />
+          <MetricCard
+            label="Humidity"
+            value={M.Humidity}
+            unit="%"
+            metricKey="Humidity"
+            tips={[
+              "Dehumidify in summer; run bath fans 20 min after showers.",
+              "Fix leaks quickly; insulate cold surfaces to prevent condensation.",
+            ]}
+            note="Comfort zone 35–55%."
+          />
+          <MetricCard
+            label="Temperature"
+            value={M.Temp}
+            unit="°F"
+            metricKey="Temp"
+            tips={["Tune supply/return balance; use ceiling fans to feel cooler at higher setpoints."]}
+          />
         </div>
 
         {/* WATER */}
         <div className="mt-10 mb-4 text-xs uppercase tracking-wide text-slate-500">Water</div>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          <MetricCard label="TDS" value={M.TDS} unit="ppm" metricKey="TDS" tips={["Reverse‑osmosis for drinking water.", "Consider softening if scaling is severe."]} />
-          <MetricCard label="Free Chlorine" value={M.Cl} unit="ppm" metricKey="Cl" tips={["Point‑of‑use carbon block.", "Replace cartridges on schedule."]} />
-          <MetricCard label="pH" value={M.pH} unit="" metricKey="pH" tips={["Adjust via filtration or neutralizer.", "Check hot water heater anode if corrosion noted."]} />
+          <MetricCard
+            label="TDS"
+            value={M.TDS}
+            unit="ppm"
+            metricKey="TDS"
+            tips={["Reverse-osmosis for drinking water.", "Consider softening if scaling is severe."]}
+          />
+          <MetricCard
+            label="Free Chlorine"
+            value={M.Cl}
+            unit="ppm"
+            metricKey="Cl"
+            tips={["Point-of-use carbon block.", "Replace cartridges on schedule."]}
+          />
+          <MetricCard
+            label="pH"
+            value={M.pH}
+            unit=""
+            metricKey="pH"
+            tips={["Adjust via filtration or neutralizer.", "Check hot water heater anode if corrosion noted."]}
+          />
         </div>
 
         {/* ETHER */}
         <div className="mt-10 mb-4 text-xs uppercase tracking-wide text-slate-500">Ether</div>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          <MetricCard label="Magnetic Field" value={M.MagField} unit="mG" metricKey="MagField" tips={["Increase distance from transformers.", "Avoid placing power bricks near beds."]} />
-          <MetricCard label="Electric Field" value={M.ElectricField} unit="V/m" metricKey="ElectricField" tips={["Unplug non‑essentials at night.", "Keep cords off headboard walls."]} />
-          <MetricCard label="Radio Frequency" value={M.RF} unit="mW/m²" metricKey="RF" tips={["Relocate router 6–10 ft from beds.", "Schedule nighttime Wi‑Fi off."]} />
+          <MetricCard
+            label="Magnetic Field"
+            value={M.MagField}
+            unit="mG"
+            metricKey="MagField"
+            tips={["Increase distance from transformers.", "Avoid placing power bricks near beds."]}
+          />
+          <MetricCard
+            label="Electric Field"
+            value={M.ElectricField}
+            unit="V/m"
+            metricKey="ElectricField"
+            tips={["Unplug non-essentials at night.", "Keep cords off headboard walls."]}
+          />
+          <MetricCard
+            label="Radio Frequency"
+            value={M.RF}
+            unit="mW/m²"
+            metricKey="RF"
+            tips={["Relocate router 6–10 ft from beds.", "Schedule nighttime Wi-Fi off."]}
+          />
         </div>
       </Section>
 
       {/* PAGE 3 – COMPARISONS (PM & CO2 only) */}
-      <Section id="compare" title="How Your Home Compares" subtitle="Houston averages, national standards, and SaSo benchmarks.">
+      <Section
+        id="compare"
+        title="How Your Home Compares"
+        subtitle="Houston averages, national standards, and SaSo benchmarks."
+      >
         <div className="grid gap-6 lg:grid-cols-3">
           {/* PM2.5 */}
           <Card className="lg:col-span-1">
@@ -541,11 +803,19 @@ export default function ReportPage() {
                   <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                   <XAxis dataKey="label" tick={{ fontSize: 12 }} />
                   <YAxis tick={{ fontSize: 12 }} domain={[0, Math.max(18, (M.PM25 ?? 0) + 3)]} />
-                  <Tooltip formatter={(v: number) => `${v} µg/m³`} cursor={{ fill: "rgba(2,6,23,0.03)" }} />
-                  <ReferenceLine y={HOUSTON_REFERENCES.pm25Benchmark} stroke={brand.accent} strokeDasharray="4 4" label={{ position: "right", value: "EPA 2024 Std (9)" }} />
+                  <Tooltip
+                    formatter={(v: number) => `${v} µg/m³`}
+                    cursor={{ fill: "rgba(2,6,23,0.03)" }}
+                  />
+                  <ReferenceLine
+                    y={HOUSTON_REFERENCES.pm25Benchmark}
+                    stroke={brand.accent}
+                    strokeDasharray="4 4"
+                    label={{ position: "right", value: "EPA 2024 Std (9)" }}
+                  />
                   <Bar dataKey="value" radius={[6, 6, 0, 0]}>
                     {pm25Compare.map((entry, i) => (
-                      <cell key={`c-${i}`} fill={entry.color} />
+                      <Cell key={`c-${i}`} fill={entry.color} />
                     ))}
                   </Bar>
                 </BarChart>
@@ -562,11 +832,19 @@ export default function ReportPage() {
                   <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                   <XAxis dataKey="label" tick={{ fontSize: 12 }} />
                   <YAxis tick={{ fontSize: 12 }} domain={[0, Math.max(60, (M.PM10 ?? 0) + 10)]} />
-                  <Tooltip formatter={(v: number) => `${v} µg/m³`} cursor={{ fill: "rgba(2,6,23,0.03)" }} />
-                  <ReferenceLine y={HOUSTON_REFERENCES.pm10Benchmark} stroke={brand.accent} strokeDasharray="4 4" label={{ position: "right", value: "SaSo Benchmark (30)" }} />
+                  <Tooltip
+                    formatter={(v: number) => `${v} µg/m³`}
+                    cursor={{ fill: "rgba(2,6,23,0.03)" }}
+                  />
+                  <ReferenceLine
+                    y={HOUSTON_REFERENCES.pm10Benchmark}
+                    stroke={brand.accent}
+                    strokeDasharray="4 4"
+                    label={{ position: "right", value: "SaSo Benchmark (30)" }}
+                  />
                   <Bar dataKey="value" radius={[6, 6, 0, 0]}>
                     {pm10Compare.map((entry, i) => (
-                      <cell key={`c-${i}`} fill={entry.color} />
+                      <Cell key={`c-${i}`} fill={entry.color} />
                     ))}
                   </Bar>
                 </BarChart>
@@ -582,12 +860,20 @@ export default function ReportPage() {
                 <BarChart data={co2Compare} margin={{ top: 8, right: 16, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                   <XAxis dataKey="label" tick={{ fontSize: 12 }} />
-                  <YAxis tick={{ fontSize: 12 }} domain={[0, Math.max(1600, (M.CO2 ?? 0) + 200)]} />
+                  <YAxis
+                    tick={{ fontSize: 12 }}
+                    domain={[0, Math.max(1600, (M.CO2 ?? 0) + 200)]}
+                  />
                   <Tooltip formatter={(v: number) => `${v} ppm`} cursor={{ fill: "rgba(2,6,23,0.03)" }} />
-                  <ReferenceLine y={HOUSTON_REFERENCES.co2Benchmark} stroke={brand.accent} strokeDasharray="4 4" label={{ position: "right", value: "SaSo Good (≤800)" }} />
+                  <ReferenceLine
+                    y={HOUSTON_REFERENCES.co2Benchmark}
+                    stroke={brand.accent}
+                    strokeDasharray="4 4"
+                    label={{ position: "right", value: "SaSo Good (≤800)" }}
+                  />
                   <Bar dataKey="value" radius={[6, 6, 0, 0]}>
                     {co2Compare.map((entry, i) => (
-                      <cell key={`c-${i}`} fill={entry.color} />
+                      <Cell key={`c-${i}`} fill={entry.color} />
                     ))}
                   </Bar>
                 </BarChart>
@@ -598,21 +884,29 @@ export default function ReportPage() {
       </Section>
 
       {/* PAGE 4 – ACTION PLAN */}
-      <Section id="action" title="Your Action Plan" subtitle="Practical steps you can start today. We’ll verify results on re‑test.">
+      <Section
+        id="action"
+        title="Your Action Plan"
+        subtitle="Practical steps you can start today. We’ll verify results on re-test."
+      >
         <div className="grid gap-6 md:grid-cols-2">
           <Card>
             <div className="mb-2 text-sm font-semibold">Immediate (Within 7 Days)</div>
             <ul className="list-disc space-y-2 pl-5 text-sm text-slate-700">
-              <li>Replace HVAC filter with <strong>MERV 13</strong> or better; seal filter bypass gaps.</li>
-              <li>Run a <strong>HEPA purifier</strong> in the bedroom overnight and living area during use.</li>
+              <li>
+                Replace HVAC filter with <strong>MERV 13</strong> or better; seal filter bypass gaps.
+              </li>
+              <li>
+                Run a <strong>HEPA purifier</strong> in the bedroom overnight and living area during use.
+              </li>
               <li>Ventilate workspace 10 min/hr or use ERV/HRV while occupied.</li>
               <li>Flush taps each morning; fill filtered pitcher for the day.</li>
             </ul>
             <div className="my-4 h-px w-full bg-slate-200" />
-            <div className="mb-2 text-sm font-semibold">Short‑Term (1–3 Months)</div>
+            <div className="mb-2 text-sm font-semibold">Short-Term (1–3 Months)</div>
             <ul className="list-disc space-y-2 pl-5 text-sm text-slate-700">
-              <li>Install under‑sink <strong>RO</strong> system and carbon polishing filter.</li>
-              <li>Add in‑duct filtration/media cabinet for lower pressure drop.</li>
+              <li>Install under-sink <strong>RO</strong> system and carbon polishing filter.</li>
+              <li>Add in-duct filtration/media cabinet for lower pressure drop.</li>
               <li>Place a CO₂ + PM monitor in office to validate improvements.</li>
             </ul>
           </Card>
@@ -634,7 +928,7 @@ export default function ReportPage() {
                   </tr>
                   <tr className="border-t border-slate-200">
                     <td className="px-3 py-2">Aquasana Claryum RO</td>
-                    <td className="px-3 py-2">Under‑sink drinking water filtration</td>
+                    <td className="px-3 py-2">Under-sink drinking water filtration</td>
                   </tr>
                   <tr className="border-t border-slate-200">
                     <td className="px-3 py-2">Airthings / Awair Element</td>
@@ -643,10 +937,16 @@ export default function ReportPage() {
                 </tbody>
               </table>
             </div>
-            <p className="mt-3 text-sm text-slate-600">Add your affiliate URLs later; this section will auto‑link items for one‑click purchase.</p>
+            <p className="mt-3 text-sm text-slate-600">
+              Add your affiliate URLs later; this section will auto-link items for one-click purchase.
+            </p>
             <div className="mt-4 flex flex-wrap gap-3">
-              <button className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow hover:bg-blue-700">Book Re‑Test</button>
-              <button className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Chat with a Technician</button>
+              <button className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-medium text-white shadow hover:bg-blue-700">
+                Book Re-Test
+              </button>
+              <button className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                Chat with a Technician
+              </button>
             </div>
           </Card>
         </div>
@@ -658,10 +958,18 @@ export default function ReportPage() {
           <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
             <p>© {new Date().getFullYear()} Sanctuary Solutions™ · Home Health Engineers</p>
             <div className="flex flex-wrap items-center gap-3">
-              <a href="#snapshot" className="hover:text-slate-700">Snapshot</a>
-              <a href="#expandables" className="hover:text-slate-700">Metrics</a>
-              <a href="#compare" className="hover:text-slate-700">Compare</a>
-              <a href="#action" className="hover:text-slate-700">Action</a>
+              <a href="#snapshot" className="hover:text-slate-700">
+                Snapshot
+              </a>
+              <a href="#expandables" className="hover:text-slate-700">
+                Metrics
+              </a>
+              <a href="#compare" className="hover:text-slate-700">
+                Compare
+              </a>
+              <a href="#action" className="hover:text-slate-700">
+                Action
+              </a>
             </div>
           </div>
         </div>
