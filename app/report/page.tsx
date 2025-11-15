@@ -456,10 +456,13 @@ export default function ReportPage() {
               <div>
                 <h1 className="text-3xl font-bold tracking-tight">Home Health Report</h1>
                 <p className="mt-1 text-slate-600">
-                  Most recent property · {new Date(property.created_at).toLocaleDateString()} ·{" "}
-                  {property.city ?? ""}
-                  {property.city ? ", " : ""}
-                  {property.state ?? ""}
+                  Most recent property ·{" "}
+		  <ClientOnly>
+    		    {new Date(property.created_at).toLocaleDateString()}
+		  </ClientOnly>{" "}
+		  · {property.city ?? ""}
+		  {property.city ? ", " : ""}
+		  {property.state ?? ""}
                 </p>
                 <p className="mt-2 text-slate-700">
                   Categories tested: <strong>Air</strong> · <strong>Water</strong> · <strong>Ether</strong>
@@ -1039,7 +1042,9 @@ export default function ReportPage() {
       <footer className="border-t border-slate-200 bg-white">
         <div className="mx-auto max-w-6xl px-4 py-8 text-sm text-slate-500">
           <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
-            <p>© {new Date().getFullYear()} Sanctuary Solutions™ · Home Health Engineers</p>
+            <p>
+              © <ClientOnly>{new Date().getFullYear()}</ClientOnly> Sanctuary Solutions™ · Home Health Engineers
+            </p>
             <div className="flex flex-wrap items-center gap-3">
               <a href="#snapshot" className="hover:text-slate-700">
                 Snapshot
@@ -1057,6 +1062,7 @@ export default function ReportPage() {
           </div>
         </div>
       </footer>
+
 
       {/* PRINT STYLES */}
       <style>{`
