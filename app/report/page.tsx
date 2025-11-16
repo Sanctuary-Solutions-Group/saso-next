@@ -723,15 +723,15 @@ export default function ReportPage() {
             </div>
             <div className="grid grid-cols-3 gap-4">
               <div className="flex flex-col items-center justify-center gap-2">
-                <MetricRing score={airScore} label="Air" color={scoreToColor(airScore)} />
+                <MetricRing percent={airScore} color={scoreToColor(airScore)} />
                 <span className="text-[11px] text-slate-500">{airLabel}</span>
               </div>
               <div className="flex flex-col items-center justify-center gap-2">
-                <MetricRing score={waterScore} label="Water" color={scoreToColor(waterScore)} />
+                <MetricRing percent={waterScore} color={scoreToColor(waterScore)} />
                 <span className="text-[11px] text-slate-500">{waterLabel}</span>
               </div>
               <div className="flex flex-col items-center justify-center gap-2">
-                <MetricRing score={etherScore} label="Ether" color={scoreToColor(etherScore)} />
+                <MetricRing percent={etherScore} color={scoreToColor(etherScore)} />
                 <span className="text-[11px] text-slate-500">{etherLabel}</span>
               </div>
             </div>
