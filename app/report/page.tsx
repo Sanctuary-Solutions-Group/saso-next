@@ -559,7 +559,7 @@ export default function ReportPage() {
 
   const airLabel = scoreToLabel(airScore);
   const waterLabel = scoreToLabel(waterScore);
-  const etherLabel = scoreToLabel(etherScore);
+  const etherStatusLabel = scoreToLabel(etherScore);
   const overallLabel = scoreToLabel(overallScore);
 
   const co2Status = co2Label(M.CO2 ?? 0);
