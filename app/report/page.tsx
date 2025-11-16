@@ -14,6 +14,11 @@ import {
   Cell,
 } from "recharts";
 import { supabase } from "@/lib/supabaseClient";
+
+import { summarizeAir } from "@/lib/scoring/airSummary";
+import { summarizeWater } from "@/lib/scoring/waterSummary";
+import { summarizeEther } from "@/lib/scoring/etherSummary";
+
 import { MetricRing } from "@/components/MetricRing";
 import { computeWaterScore } from "@/lib/scoring/water";
 import { computeEtherScore, etherLabel } from "@/lib/scoring/ether";
@@ -562,6 +567,10 @@ export default function ReportPage() {
   const etherStatusLabel = scoreToLabel(etherScore);
   const overallLabel = scoreToLabel(overallScore);
 
+  const airSummary = summarizeAir(M);
+  const waterSummary = summarizeWater(M);
+  const etherSummary = summarizeEther(M);
+
   const co2Status = co2Label(M.CO2 ?? 0);
   const pm25Status = pm25Label(M.PM25 ?? 0);
   const pm10Status = pm10Label(M.PM10 ?? 0);
@@ -752,14 +761,17 @@ export default function ReportPage() {
               <div className="flex flex-col items-center justify-center gap-2">
                 <MetricRing percent={airScore} color={scoreToColor(airScore)} />
                 <span className="text-[11px] text-slate-500">{airLabel}</span>
+		<span className="text-[11px] text-slate-400 italic">{airSummary}</span>
               </div>
               <div className="flex flex-col items-center justify-center gap-2">
                 <MetricRing percent={waterScore} color={scoreToColor(waterScore)} />
                 <span className="text-[11px] text-slate-500">{waterLabel}</span>
+		<span className="text-[11px] text-slate-400 italic">{waterSummary}</span>
               </div>
               <div className="flex flex-col items-center justify-center gap-2">
                 <MetricRing percent={etherScore} color={scoreToColor(etherScore)} />
                 <span className="text-[11px] text-slate-500">{etherLabel(etherScore)}</span>
+		<span className="text-[11px] text-slate-400 italic">{etherSummary}</span>
               </div>
             </div>
           </Card>
