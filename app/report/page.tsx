@@ -104,7 +104,7 @@ type CategoryKey = "air" | "water" | "ether";
 interface MeasurementRow {
   id: string;
   property_id: string;
-  metric_key: MetricKey;
+  metric: MetricKey;   // <-- EXACT Supabase column name
   value: number;
   unit: string | null;
   location: string | null;
@@ -416,9 +416,9 @@ export default function ReportPage() {
     };
 
     for (const row of measurements) {
-      if (!row.metric_key || base[row.metric_key] === undefined) continue;
+      if (!row.metric || base[row.metric] === undefined) continue;
       // For now: assume one reading per metric per property; if multiple, we could average
-      base[row.metric_key] = row.value;
+      base[row.metric] = row.value;
     }
 
     return base;
