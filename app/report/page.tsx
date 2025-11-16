@@ -366,38 +366,82 @@ export default function ReportPage() {
   const [measurements, setMeasurements] = useState<MeasurementRow[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch latest property + its measurements
+  // Fetch property + measurements (supports magic link)
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true);
       setError(null);
 
-      const { data: propertyRows, error: propertyError } = await supabase
-        .from("property")
-        .select("*")
-        .order("created_at", { ascending: false })
-        .limit(1);
+      // 1️. Read token from URL
+      const params = new URLSearchParams(window.location.search);
+      const token = params.get("token");
 
-      if (propertyError) {
-        console.error(propertyError);
-        setError("Unable to load latest property.");
-        setLoading(false);
-        return;
+      let propertyIdToLoad: string | null = null;
+
+      if (token) {
+        // 2️. Validate token
+        const { data: accessRow, error: accessError } = await supabase
+          .from("report_access")
+          .select("property_id, expires_at")
+          .eq("token", token)
+          .single();
+
+        if (accessError || !accessRow) {
+          setError("This link is invalid or expired.");
+          setLoading(false);
+          return;
+        }
+
+        // 3️. Check expiration
+        if (accessRow.expires_at && new Date(accessRow.expires_at) < new Date()) {
+          setError("This link has expired.");
+          setLoading(false);
+          return;
+        }
+
+        // 4️. Valid token → load this property
+        propertyIdToLoad = accessRow.property_id;
       }
 
-      const latestProperty = propertyRows?.[0] ?? null;
-      setProperty(latestProperty);
+      // 5️. If no token, fallback to latest property
+      if (!propertyIdToLoad) {
+        const { data: propertyRows, error: propertyError } = await supabase
+          .from("property")
+          .select("*")
+          .order("created_at", { ascending: false })
+          .limit(1);
 
-      if (!latestProperty) {
-        setMeasurements([]);
-        setLoading(false);
-        return;
+        if (propertyError || !propertyRows?.[0]) {
+          setError("Unable to load latest property.");
+          setLoading(false);
+          return;
+        }
+
+        const latestProperty = propertyRows[0];
+        setProperty(latestProperty);
+        propertyIdToLoad = latestProperty.id;
+      } else {
+        // 6️. Load property by ID (magic link path)
+        const { data: propertyRow, error: propertyErr } = await supabase
+          .from("property")
+          .select("*")
+          .eq("id", propertyIdToLoad)
+          .single();
+
+        if (propertyErr || !propertyRow) {
+          setError("Unable to load property.");
+          setLoading(false);
+          return;
+        }
+
+        setProperty(propertyRow);
       }
 
+      // 7️. Load measurements for the chosen property
       const { data: measurementRows, error: measurementError } = await supabase
         .from("measurement")
         .select("*")
-        .eq("property_id", latestProperty.id);
+        .eq("property_id", propertyIdToLoad);
 
       if (measurementError) {
         console.error(measurementError);
