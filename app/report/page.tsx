@@ -15,6 +15,7 @@ import {
 } from "recharts";
 import { supabase } from "@/lib/supabaseClient";
 import { MetricRing } from "@/components/MetricRing";
+import { computeWaterScore } from "@/lib/scoring/water";
 import {
   computeAirScore,
   co2Label,
@@ -71,8 +72,15 @@ const THRESHOLDS: Record<string, { goodMax: number; fairMax: number; unit: strin
   RF: { goodMax: 0.1, fairMax: 1.0, unit: "mW/m²" },
 };
 
-// Weights for category scoring (v1.1) – still used for Water/Ether
-const WEIGHTS_AIR: Record<string, number> = { CO2: 0.25, PM25: 0.25, PM10: 0.1, VOCs: 0.2, Humidity: 0.1, Temp: 0.1 };
+// Weights for category scoring (v1.1) – still used for Ether
+const WEIGHTS_AIR: Record<string, number> = {
+  CO2: 0.25,
+  PM25: 0.25,
+  PM10: 0.1,
+  VOCs: 0.2,
+  Humidity: 0.1,
+  Temp: 0.1,
+};
 const WEIGHTS_WATER: Record<string, number> = { TDS: 0.4, Cl: 0.3, pH: 0.3 };
 const WEIGHTS_ETHER: Record<string, number> = { MagField: 0.3, ElectricField: 0.3, RF: 0.4 };
 
@@ -104,7 +112,7 @@ type CategoryKey = "air" | "water" | "ether";
 interface MeasurementRow {
   id: string;
   property_id: string;
-  metric: MetricKey;   // <-- EXACT Supabase column name
+  metric: MetricKey; // <-- EXACT Supabase column name
   value: number;
   unit: string | null;
   location: string | null;
@@ -460,14 +468,23 @@ export default function ReportPage() {
       }),
     [M]
   );
-  const waterScore = useMemo(() => weightedCategoryScore(metricScores, WEIGHTS_WATER), [metricScores]);
+
+  const waterScore = useMemo(
+    () =>
+      computeWaterScore({
+        tds: M.TDS,
+        cl: M.Cl,
+        ph: M.pH,
+      }),
+    [M]
+  );
+
   const etherScore = useMemo(() => weightedCategoryScore(metricScores, WEIGHTS_ETHER), [metricScores]);
+
   const overallScore = useMemo(
     () =>
       Math.round(
-        airScore * OVERALL_WEIGHTS.air +
-          waterScore * OVERALL_WEIGHTS.water +
-          etherScore * OVERALL_WEIGHTS.ether
+        airScore * OVERALL_WEIGHTS.air + waterScore * OVERALL_WEIGHTS.water + etherScore * OVERALL_WEIGHTS.ether
       ),
     [airScore, waterScore, etherScore]
   );
@@ -901,10 +918,7 @@ export default function ReportPage() {
             >
               <p>
                 Your TDS reading was{" "}
-                <span className="font-semibold text-slate-900">
-                  {M.TDS ? `${M.TDS.toFixed(0)} ppm` : "—"}
-                </span>
-                .
+                <span className="font-semibold text-slate-900">{M.TDS ? `${M.TDS.toFixed(0)} ppm` : "—"}</span>.
               </p>
               <ul className="mt-2 list-disc space-y-1 pl-4 text-sm">
                 <li>
@@ -928,16 +942,11 @@ export default function ReportPage() {
               title="Chlorine"
               subtitle="Disinfection byproduct with taste and respiratory impact."
               score={metricScores.Cl}
-              statusLabel={
-                M.Cl <= 0.5 ? "Low" : M.Cl <= 1.5 ? "Typical municipal" : M.Cl <= 3 ? "High" : "Very high"
-              }
+              statusLabel={M.Cl <= 0.5 ? "Low" : M.Cl <= 1.5 ? "Typical municipal" : M.Cl <= 3 ? "High" : "Very high"}
             >
               <p>
                 Your chlorine level was{" "}
-                <span className="font-semibold text-slate-900">
-                  {M.Cl ? `${M.Cl.toFixed(2)} ppm` : "—"}
-                </span>
-                .
+                <span className="font-semibold text-slate-900">{M.Cl ? `${M.Cl.toFixed(2)} ppm` : "—"}</span>.
               </p>
               <ul className="mt-2 list-disc space-y-1 pl-4 text-sm">
                 <li>
@@ -1037,9 +1046,7 @@ export default function ReportPage() {
               title="Radiofrequency (RF)"
               subtitle="Wireless signals from Wi-Fi, phones, and nearby infrastructure."
               score={metricScores.RF}
-              statusLabel={
-                M.RF <= 0.05 ? "Very low" : M.RF <= 0.1 ? "Low" : M.RF <= 1 ? "Moderate" : "Elevated"
-              }
+              statusLabel={M.RF <= 0.05 ? "Very low" : M.RF <= 0.1 ? "Low" : M.RF <= 1 ? "Moderate" : "Elevated"}
             >
               <p>
                 RF power density snapshot was{" "}
@@ -1336,9 +1343,7 @@ export default function ReportPage() {
       <footer className="border-t border-slate-200 bg-white">
         <div className="mx-auto max-w-6xl px-4 py-8 text-sm text-slate-500">
           <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
-            <p>
-              © {new Date().getFullYear()} Sanctuary Solutions™ · Home Health Engineers
-            </p>
+            <p>© {new Date().getFullYear()} Sanctuary Solutions™ · Home Health Engineers</p>
             <div className="flex flex-wrap items-center gap-3">
               <a href="#snapshot" className="hover:text-slate-700">
                 Snapshot
