@@ -677,7 +677,7 @@ export default function ReportPage() {
                     <div className="flex flex-col rounded-lg bg-slate-50 px-2.5 py-1.5">
                       <span className="text-[10px] uppercase tracking-wide text-slate-500">Ether</span>
                       <span className="mt-1 text-sm font-semibold text-slate-900">{etherScore}</span>
-                      <span className="text-[10px] text-slate-500">{etherLabel}</span>
+                      <span className="text-[10px] text-slate-500">{etherLabel(etherScore)}</span>
                     </div>
                   </div>
                 </Card>
