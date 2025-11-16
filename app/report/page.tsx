@@ -16,6 +16,7 @@ import {
 import { supabase } from "@/lib/supabaseClient";
 import { MetricRing } from "@/components/MetricRing";
 import { computeWaterScore } from "@/lib/scoring/water";
+import { computeEtherScore, etherLabel } from "@/lib/scoring/ether";
 import {
   computeAirScore,
   co2Label,
@@ -479,7 +480,16 @@ export default function ReportPage() {
     [M]
   );
 
-  const etherScore = useMemo(() => weightedCategoryScore(metricScores, WEIGHTS_ETHER), [metricScores]);
+  const etherScore = useMemo(
+    () =>
+      computeEtherScore({
+        mag: M.MagField ?? 0,
+        electric: M.ElectricField ?? 0,
+        rf: M.RF ?? 0,
+      }),
+    [M]
+  );
+
 
   const overallScore = useMemo(
     () =>
@@ -749,7 +759,7 @@ export default function ReportPage() {
               </div>
               <div className="flex flex-col items-center justify-center gap-2">
                 <MetricRing percent={etherScore} color={scoreToColor(etherScore)} />
-                <span className="text-[11px] text-slate-500">{etherLabel}</span>
+                <span className="text-[11px] text-slate-500">{etherLabel(etherScore)}</span>
               </div>
             </div>
           </Card>
