@@ -1,4 +1,4 @@
-// app/api/magic-link/route.ts
+// app/api/generate-link/route.ts
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabaseClient";
 import { randomUUID } from "crypto";
@@ -14,14 +14,11 @@ export async function POST(request: Request) {
       );
     }
 
-    // 1. Generate token
     const token = randomUUID().replace(/-/g, "");
 
-    // 2. Expiration — 30 days from now
     const expires_at = new Date();
     expires_at.setDate(expires_at.getDate() + 30);
 
-    // 3. Insert magic link record
     const { data, error } = await supabase
       .from("report_access")
       .insert({
@@ -37,13 +34,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    // 4. Return the URL the client can use
-    const url = `${process.env.NEXT_PUBLIC_SITE_URL}/report?t=${token}`;
-
     return NextResponse.json({
-      success: true,
-      link: url,
+      ok: true,
       token,
+      link: `${process.env.NEXT_PUBLIC_SITE_URL}/report?token=${token}`,
       expires_at,
     });
   } catch (err) {

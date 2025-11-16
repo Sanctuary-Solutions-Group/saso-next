@@ -669,6 +669,15 @@ export default function ReportPage() {
               transition={{ type: "spring", stiffness: 120, damping: 22, delay: 0.15 }}
             />
             <div className="relative space-y-4">
+
+              {/* Share Link Button */}
+              <button
+                onClick={generateLink}
+                className="px-3 py-2 rounded-md bg-blue-600 text-white text-sm hover:bg-blue-700 transition"
+              >
+                Generate Share Link
+              </button>
+
               <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
                 <div>
                   <h1 className="text-3xl font-bold tracking-tight">Home Health Report</h1>
@@ -682,6 +691,7 @@ export default function ReportPage() {
                     Categories tested: <strong>Air</strong> · <strong>Water</strong> · <strong>Ether</strong>
                   </p>
                 </div>
+
                 <Card className="md:min-w-[340px]">
                   <div className="text-xs uppercase tracking-wide text-slate-500">Overall Home Health</div>
                   <div className="mt-2 flex items-end justify-between">
