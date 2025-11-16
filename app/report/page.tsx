@@ -374,7 +374,7 @@ export default function ReportPage() {
     }
 
     try {
-      const res = await fetch("/api/generate-link", {
+      const res = await fetch("/api/magic-link", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ property_id: property.id }),
