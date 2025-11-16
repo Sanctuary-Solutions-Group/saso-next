@@ -1,3 +1,5 @@
+// lib/scoring/ether.ts
+
 export function computeEtherScore({
   mag,
   electric,
@@ -28,6 +30,13 @@ export function computeEtherScore({
   else if (rf > 50 && rf <= 200) rfScore = 40;
   else if (rf > 200) rfScore = 15;
 
-  // Equal weighted average
   return Math.round((magScore + elecScore + rfScore) / 3);
+}
+
+export function etherLabel(score: number): string {
+  if (score >= 90) return "Excellent";
+  if (score >= 80) return "Good";
+  if (score >= 65) return "Moderate";
+  if (score >= 40) return "Elevated";
+  return "High";
 }
