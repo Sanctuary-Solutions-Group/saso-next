@@ -366,6 +366,38 @@ export default function ReportPage() {
   const [measurements, setMeasurements] = useState<MeasurementRow[]>([]);
   const [error, setError] = useState<string | null>(null);
 
+  // Generate Magic Link for this property
+  const generateLink = async () => {
+    if (!property?.id) {
+      alert("No property loaded yet.");
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/generate-link", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ property_id: property.id }),
+      });
+
+      const out = await res.json();
+
+      if (!out.ok) {
+        alert("Failed to generate link.");
+        return;
+      }
+
+      // Copy to clipboard for convenience
+      await navigator.clipboard.writeText(out.link);
+
+      alert(`Share link copied!\n\n${out.link}`);
+    } catch (err) {
+      console.error(err);
+      alert("Error generating share link.");
+    }
+  };
+
+
   // Fetch property + measurements (supports magic link)
   useEffect(() => {
     const fetchData = async () => {
