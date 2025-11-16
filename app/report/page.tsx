@@ -14,6 +14,7 @@ import {
   Cell,
 } from "recharts";
 import { supabase } from "@/lib/supabaseClient";
+import { Wind, Droplet, Zap } from "lucide-react";
 
 import { summarizeAir } from "@/lib/scoring/airSummary";
 import { summarizeWater } from "@/lib/scoring/waterSummary";
@@ -844,22 +845,42 @@ export default function ReportPage() {
               </div>
             </div>
             <div className="grid grid-cols-3 gap-4">
+
+              {/* AIR */}
               <div className="flex flex-col items-center justify-center gap-2">
-                <MetricRing percent={airScore} color={scoreToColor(airScore)} />
+                <MetricRing
+                  percent={airScore}
+                  icon={<Wind size={22} />}
+                  size={80}
+                />
                 <span className="text-[11px] text-slate-500">{airLabel}</span>
-		<span className="text-[11px] text-slate-400 italic">{airSummary}</span>
+                <span className="text-[11px] text-slate-400 italic">{airSummary}</span>
               </div>
+
+              {/* WATER */}
               <div className="flex flex-col items-center justify-center gap-2">
-                <MetricRing percent={waterScore} color={scoreToColor(waterScore)} />
+                <MetricRing
+                  percent={waterScore}
+                  icon={<Droplet size={22} />}
+                  size={80}
+                />
                 <span className="text-[11px] text-slate-500">{waterLabel}</span>
-		<span className="text-[11px] text-slate-400 italic">{waterSummary}</span>
+                <span className="text-[11px] text-slate-400 italic">{waterSummary}</span>
               </div>
+
+              {/* ETHER */}
               <div className="flex flex-col items-center justify-center gap-2">
-                <MetricRing percent={etherScore} color={scoreToColor(etherScore)} />
+                <MetricRing
+                  percent={etherScore}
+                  icon={<Zap size={22} />}
+                  size={80}
+                />
                 <span className="text-[11px] text-slate-500">{etherLabel(etherScore)}</span>
-		<span className="text-[11px] text-slate-400 italic">{etherSummary}</span>
+                <span className="text-[11px] text-slate-400 italic">{etherSummary}</span>
               </div>
+
             </div>
+
           </Card>
         </div>
       </Section>
