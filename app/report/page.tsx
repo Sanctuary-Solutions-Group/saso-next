@@ -14,7 +14,7 @@ import {
   Cell,
 } from "recharts";
 import { supabase } from "@/lib/supabaseClient";
-import { Wind, Droplet, Zap } from "lucide-react";
+import { Wind, Droplet, Zap, Info } from "lucide-react";
 
 import { summarizeAir } from "@/lib/scoring/airSummary";
 import { summarizeWater } from "@/lib/scoring/waterSummary";
@@ -30,6 +30,7 @@ import {
   pm10Label,
   humidityCaution,
 } from "@/lib/scoring/air";
+
 
 // -----------------------------------------------------------------------------
 // Sanctuary Solutions – LIVE Dashboard Report (Supabase-wired)
@@ -889,8 +890,30 @@ export default function ReportPage() {
       <Section id="expandables" label="Detailed View" title="How your home performed by metric">
         <div className="grid gap-4 md:grid-cols-3">
           {/* AIR */}
-          <div className="space-y-3">
-            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Air</div>
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                  Air
+                </div>
+
+                <span className="text-slate-400">·</span>
+
+                <a
+                  href="https://www.airnow.gov/?city=Houston&state=TX&zipcode=77007"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="relative group flex items-center gap-1 text-[11px] font-medium text-blue-600 hover:text-blue-700"
+                >
+                  <span className="shadow-[0_0_2px_rgba(0,0,0,0.1)]">Local Air Risks</span>
+
+                  <Info size={13} className="text-blue-600 group-hover:text-blue-700" />
+
+                  <div className="absolute left-0 top-5 w-56 p-2 rounded-md bg-slate-900 text-white text-[11px] opacity-0 group-hover:opacity-100 transition-opacity shadow-lg z-20">
+                    Outdoor pollution, pollen, and ventilation patterns all influence indoor CO₂ and particulate levels.
+                    Click to view local environmental conditions.
+                  </div>
+                </a>
+              </div>
 
             <ExpandableCard
               title="CO₂ (Carbon Dioxide)"
@@ -1028,7 +1051,29 @@ export default function ReportPage() {
 
           {/* WATER */}
           <div className="space-y-3">
-            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Water</div>
+            <div className="flex items-center gap-2">
+              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                Water
+              </div>
+
+              <span className="text-slate-400">·</span>
+
+              <a
+                href="https://www.houstonpublicworks.org/sites/g/files/nwywnm456/files/doc/003_2024_houston_water_quality_report_08.13.2025.pdf"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="relative group flex items-center gap-1 text-[11px] font-medium text-blue-600 hover:text-blue-700"
+              >
+                <span className="shadow-[0_0_2px_rgba(0,0,0,0.1)]">Local Water Risks</span>
+
+                <Info size={13} className="text-blue-600 group-hover:text-blue-700" />
+
+                <div className="absolute left-0 top-5 w-56 p-2 rounded-md bg-slate-900 text-white text-[11px] opacity-0 group-hover:opacity-100 transition-opacity shadow-lg z-20">
+                  Municipal water varies by source, treatment method, and distribution system age. Learn the key factors
+                  that influence chlorine levels, minerals, taste, and potential contaminants in Houston’s network.
+                </div>
+              </a>
+            </div>
 
             <ExpandableCard
               title="Total Dissolved Solids (TDS)"
@@ -1120,7 +1165,28 @@ export default function ReportPage() {
 
           {/* ETHER */}
           <div className="space-y-3">
-            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Ether</div>
+            <div className="flex items-center gap-2">
+              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                Ether
+              </div>
+
+              <span className="text-slate-400">·</span>
+
+              <a
+                href="https://www.antennasearch.com/HTML/search/search.php?address=77007"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="relative group flex items-center gap-1 text-[11px] font-medium text-blue-600 hover:text-blue-700"
+              >
+                <span className="shadow-[0_0_2px_rgba(0,0,0,0.1)]">Local EMF Context</span>
+
+                <Info size={13} className="text-blue-600 group-hover:text-blue-700" />
+
+                <div className="absolute left-0 top-5 w-56 p-2 rounded-md bg-slate-900 text-white text-[11px] opacity-0 group-hover:opacity-100 transition-opacity shadow-lg z-20">
+                  Nearby cell towers, building wiring patterns, and power infrastructure all contribute to background EMF exposure. Click to view the electromagnetic environment around your home.
+                </div>
+              </a>
+            </div>
 
             <ExpandableCard
               title="Magnetic Fields (ELF)"
