@@ -4,24 +4,63 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
+import { SaInput } from "@/components/SaInput";
 
-// ─── Types ───────────────────────────────────────────────
+/* ============================================================
+   Metric Definitions
+   Pretty label (UI) → raw key (DB) → locked unit
+   ============================================================ */
+
+const metricOptions: Record<
+  "air" | "water" | "ether",
+  { key: string; label: string; unit: string }[]
+> = {
+  air: [
+    { key: "CO2", label: "CO₂", unit: "ppm" },
+    { key: "PM25", label: "PM₂.₅", unit: "µg/m³" },
+    { key: "PM10", label: "PM₁₀", unit: "µg/m³" },
+    { key: "VOCs", label: "VOCs", unit: "ppb" },
+    { key: "Humidity", label: "Humidity", unit: "%" },
+    { key: "Temp", label: "Temperature", unit: "°F" },
+  ],
+
+  water: [
+    { key: "TDS", label: "Total Dissolved Solids (TDS)", unit: "ppm" },
+    { key: "Cl", label: "Free Chlorine", unit: "ppm" },
+    { key: "pH", label: "pH", unit: "" },
+  ],
+
+  ether: [
+    { key: "MagField", label: "Magnetic Field (ELF)", unit: "mG" },
+    { key: "ElectricField", label: "Electric Field", unit: "V/m" },
+    { key: "RF", label: "Radiofrequency (RF)", unit: "mW/m²" },
+  ],
+};
+
+/* ============================================================
+   Types
+   ============================================================ */
+
 type Property = {
   id: string;
-  name: string | null;
-  address_line1: string | null;
+  address: string | null;
   city: string | null;
   state: string | null;
-  beds: number | null;
-  baths: number | null;
+  zip: string | null;
   sqft: number | null;
+  year_built: number | null;
+  primary_contact_email: string | null;
+  occupants_adults: number | null;
+  occupants_children: number | null;
+  occupants_animals: number | null;
   created_at: string;
 };
 
 type Room = {
   id: string;
   name: string;
-  type: string;
+  type: string | null;
+  order_index: number | null;
   property_id: string;
   created_at: string;
 };
@@ -38,29 +77,10 @@ type Measurement = {
   taken_at: string;
 };
 
-// ─── Metric Options by Category ───────────────────────────
-const metricOptions: Record<string, { metric: string; unit: string }[]> = {
-  air: [
-    { metric: "CO2", unit: "ppm" },
-    { metric: "PM2.5", unit: "µg/m³" },
-    { metric: "PM10", unit: "µg/m³" },
-    { metric: "VOCs", unit: "ppb" },
-    { metric: "Humidity", unit: "%" },
-    { metric: "Temperature", unit: "°F" },
-  ],
-  water: [
-    { metric: "TDS", unit: "ppm" },
-    { metric: "Free Chlorine", unit: "ppm" },
-    { metric: "pH", unit: "" },
-  ],
-  ether: [
-    { metric: "Mag Field", unit: "mG" },
-    { metric: "Electric Field", unit: "V/m" },
-    { metric: "RF", unit: "mW/m²" },
-  ],
-};
+/* ============================================================
+   Component
+   ============================================================ */
 
-// ─── Component ────────────────────────────────────────────
 export default function PropertyDetail() {
   const params = useParams();
   const propertyId = params.id as string;
@@ -69,6 +89,7 @@ export default function PropertyDetail() {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [measurements, setMeasurements] = useState<Measurement[]>([]);
   const [loading, setLoading] = useState(true);
+  const [toast, setToast] = useState<string | null>(null);
 
   const [newRoom, setNewRoom] = useState("");
   const [addingRoom, setAddingRoom] = useState(false);
@@ -76,23 +97,40 @@ export default function PropertyDetail() {
   const [form, setForm] = useState({
     room_id: "",
     category: "air",
-    metric: "",
+    metric: metricOptions.air[0].key,
+    unit: metricOptions.air[0].unit,
     value: "",
-    unit: "",
     notes: "",
   });
 
-  // ─── Fetch Data ────────────────────────────────────────
+  function showToast(msg: string) {
+    setToast(msg);
+    setTimeout(() => setToast(null), 2200);
+  }
+
+  /* ============================================================
+     Fetch data
+     ============================================================ */
+
   useEffect(() => {
-    fetchData();
+    fetchAll();
   }, [propertyId]);
 
-  async function fetchData() {
+  async function fetchAll() {
     setLoading(true);
-    const { data: prop } = await supabase.from("property").select("*").eq("id", propertyId).single();
+
+    const { data: prop } = await supabase
+      .from("property")
+      .select("*")
+      .eq("id", propertyId)
+      .single();
     setProperty(prop || null);
 
-    const { data: rms } = await supabase.from("room").select("*").eq("property_id", propertyId).order("created_at");
+    const { data: rms } = await supabase
+      .from("room")
+      .select("*")
+      .eq("property_id", propertyId)
+      .order("order_index", { ascending: true });
     setRooms(rms || []);
 
     const { data: ms } = await supabase
@@ -101,241 +139,443 @@ export default function PropertyDetail() {
       .eq("property_id", propertyId)
       .order("taken_at", { ascending: false });
     setMeasurements(ms || []);
+
     setLoading(false);
   }
 
-  // ─── Add / Delete Room ─────────────────────────────────
+  /* ============================================================
+     Room Management
+     ============================================================ */
+
   async function handleAddRoom(e: React.FormEvent) {
     e.preventDefault();
     if (!newRoom.trim()) return;
+
     setAddingRoom(true);
+
     const { data, error } = await supabase
       .from("room")
-      .insert({ property_id: propertyId, name: newRoom.trim(), type: "other" })
+      .insert({
+        property_id: propertyId,
+        name: newRoom.trim(),
+        type: "other",
+        order_index: rooms.length,
+      })
       .select("*")
       .single();
-    if (!error && data) setRooms((prev) => [...prev, data]);
-    setNewRoom("");
+
+    if (!error && data) {
+      setRooms((prev) => [...prev, data]);
+      showToast("Room added.");
+      setNewRoom("");
+    }
+
     setAddingRoom(false);
   }
 
   async function handleDeleteRoom(id: string) {
     if (!confirm("Delete this room?")) return;
+
     const { error } = await supabase.from("room").delete().eq("id", id);
-    if (!error) setRooms((prev) => prev.filter((r) => r.id !== id));
+    if (!error) {
+      setRooms((prev) => prev.filter((r) => r.id !== id));
+      showToast("Room deleted.");
+    }
   }
 
-  // ─── Handle Measurement Form ───────────────────────────
-  function handleCategoryChange(category: string) {
-    const firstMetric = metricOptions[category][0];
+  /* ============================================================
+     Measurement Logic
+     ============================================================ */
+
+  function handleCategoryChange(newCat: "air" | "water" | "ether") {
+    const defaultMetric = metricOptions[newCat][0];
+
     setForm((prev) => ({
       ...prev,
-      category,
-      metric: firstMetric.metric,
-      unit: firstMetric.unit,
+      category: newCat,
+      metric: defaultMetric.key,
+      unit: defaultMetric.unit,
+    }));
+  }
+
+  function handleMetricChange(newKey: string) {
+    const selected = [
+      ...metricOptions.air,
+      ...metricOptions.water,
+      ...metricOptions.ether,
+    ].find((m) => m.key === newKey);
+
+    if (!selected) return;
+
+    setForm((prev) => ({
+      ...prev,
+      metric: selected.key,
+      unit: selected.unit,
     }));
   }
 
   async function handleAddMeasurement(e: React.FormEvent) {
     e.preventDefault();
+
     if (!form.room_id || !form.metric || !form.value) return;
+
     const payload = {
       property_id: propertyId,
       room_id: form.room_id,
       category: form.category,
       metric: form.metric,
       value: parseFloat(form.value),
-      unit: form.unit,
+      unit: form.unit, // always locked
       notes: form.notes || null,
     };
-    const { data, error } = await supabase.from("measurement").insert(payload).select("*").single();
-    if (!error && data) setMeasurements((prev) => [data, ...prev]);
-    setForm({ ...form, value: "", notes: "" });
+
+    const { data, error } = await supabase
+      .from("measurement")
+      .insert(payload)
+      .select("*")
+      .single();
+
+    if (error) {
+      console.error("Insert error:", error);
+      showToast("Error adding measurement");
+      return;
+    }
+
+    if (data) {
+      setMeasurements((prev) => [data, ...prev]);
+      showToast("Measurement added.");
+      setForm((prev) => ({ ...prev, value: "", notes: "" }));
+    }
   }
 
-  // ─── Render ────────────────────────────────────────────
-  if (loading || !property)
+  /* ============================================================
+     Render
+     ============================================================ */
+
+  if (loading || !property) {
     return (
-      <div className="min-h-screen flex items-center justify-center text-[var(--muted)]">
-        <div className="loader mr-2 border-2" /> Loading property…
+      <div className="min-h-screen flex items-center justify-center text-slate-500">
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-slate-300 border-t-slate-700" />
       </div>
     );
+  }
+
+  const addressLine = property.address ?? "Untitled Property";
+  const cityLine = [property.city, property.state, property.zip]
+    .filter(Boolean)
+    .join(", ");
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-[var(--bg-gradient-from)] to-[var(--bg-gradient-to)]">
-      <div className="container py-8">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 mb-6">
-          <div>
-            <h1 className="text-2xl font-semibold">{property.name || "Untitled Property"}</h1>
-            <p className="text-sm text-[var(--muted)]">
-              {[property.address_line1, property.city, property.state].filter(Boolean).join(", ")}
-            </p>
+    <div className="min-h-screen bg-slate-50 text-slate-900">
+
+      {/* HEADER */}
+      <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/80 backdrop-blur">
+        <div className="mx-auto max-w-6xl px-4 py-3 flex justify-between items-center">
+          <div className="flex items-center gap-3">
+            <div className="h-9 w-9 flex items-center justify-center bg-slate-900 text-white text-xs font-bold rounded-xl">
+              Sa
+            </div>
+            <div>
+              <div className="text-xs tracking-[0.18em] font-semibold text-slate-500 uppercase">
+                Sanctuary Solutions
+              </div>
+              <div className="text-[13px] font-medium text-slate-800">
+                Technician Workspace
+              </div>
+            </div>
           </div>
-          <Link
-            href="/technician"
-            className="text-[var(--muted)] hover:text-[var(--brand)] transition flex items-center"
-          >
-            ← Back to Properties
-          </Link>
+
+          <nav className="hidden md:flex text-xs gap-4 text-slate-500">
+            <Link href="/technician" className="hover:text-slate-900">
+              Dashboard
+            </Link>
+            <span className="font-semibold text-slate-900">Property Session</span>
+            <Link href="/report" className="hover:text-slate-900">
+              Client Report
+            </Link>
+          </nav>
+        </div>
+      </header>
+
+      {/* MAIN */}
+      <main className="mx-auto max-w-6xl px-4 py-8">
+        {/* Page header */}
+        <div className="mb-6">
+          <div className="text-xs font-semibold tracking-[0.18em] uppercase text-slate-500">
+            Active Property
+          </div>
+          <h1 className="text-2xl font-semibold mt-1">{addressLine}</h1>
+          <p className="text-sm text-slate-500">{cityLine}</p>
         </div>
 
-        {/* ─── Room Management ─────────────────────── */}
-        <div className="card mb-10 border border-slate-100">
-          <h2 className="h2 mb-3">Rooms</h2>
-          <form onSubmit={handleAddRoom} className="flex flex-col sm:flex-row gap-2 mb-6">
-            <input
-              value={newRoom}
-              onChange={(e) => setNewRoom(e.target.value)}
-              placeholder="Add new room..."
-              className="input flex-1"
-              disabled={addingRoom}
-            />
-            <button className="btn sm:w-auto" disabled={addingRoom || !newRoom.trim()}>
-              {addingRoom ? "Adding..." : "Add Room"}
-            </button>
-          </form>
+        {/* Two-column layout */}
+        <div className="grid gap-6 lg:grid-cols-[1.8fr_2fr]">
 
-          {rooms.length === 0 ? (
-            <p className="subtle">No rooms yet.</p>
-          ) : (
-            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {rooms.map((room) => (
-                <div
-                  key={room.id}
-                  className="flex justify-between items-center bg-white border border-slate-100 rounded-xl p-3 hover:border-[var(--brand-light)] transition"
+          {/* LEFT COLUMN =================================================== */}
+          <div className="space-y-6">
+
+            {/* Rooms */}
+            <div className="rounded-2xl bg-white/80 border border-slate-200 shadow-sm p-5">
+              <div className="mb-4">
+                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                  Rooms
+                </div>
+                <p className="text-xs text-slate-500 mt-1">
+                  Add or remove rooms for measurement capture.
+                </p>
+              </div>
+
+              <form onSubmit={handleAddRoom} className="flex flex-col sm:flex-row gap-2 mb-4">
+                <SaInput
+                  demo="Add new room…"
+                  value={newRoom}
+                  onChange={setNewRoom}
+                  className="flex-1"
+                />
+
+                <button
+                  type="submit"
+                  disabled={addingRoom || !newRoom.trim()}
+                  className="bg-blue-600 text-white text-xs px-4 py-2 rounded-md shadow-sm hover:bg-blue-700 disabled:opacity-50"
                 >
-                  <span>{room.name}</span>
-                  <button
-                    onClick={() => handleDeleteRoom(room.id)}
-                    className="text-[var(--muted)] hover:text-red-500 transition"
+                  {addingRoom ? "Adding…" : "Add Room"}
+                </button>
+              </form>
+
+              <div className="grid sm:grid-cols-2 gap-2">
+                {rooms.map((room) => (
+                  <div
+                    key={room.id}
+                    className="flex items-center justify-between bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm shadow-sm hover:bg-blue-50/50 hover:border-blue-100"
                   >
-                    ✕
+                    <span>{room.name}</span>
+                    <button
+                      onClick={() => handleDeleteRoom(room.id)}
+                      className="text-slate-400 hover:text-rose-600 text-xs"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Capture / Add Measurement */}
+            <div className="rounded-2xl bg-white/80 border border-slate-200 shadow-sm p-5">
+              <div className="mb-4">
+                <div className="text-xs font-semibold tracking-[0.18em] uppercase text-slate-500">
+                  Capture
+                </div>
+                <h2 className="text-sm font-semibold text-slate-900 mt-1">
+                  Add Measurement
+                </h2>
+              </div>
+
+              {/* Category Tabs */}
+              <div className="inline-flex mb-4 rounded-full border border-slate-200 bg-slate-50 p-0.5 text-[11px]">
+                {(["air", "water", "ether"] as const).map((cat) => (
+                  <button
+                    key={cat}
+                    type="button"
+                    onClick={() => handleCategoryChange(cat)}
+                    className={`px-3 py-1 rounded-full capitalize transition ${
+                      form.category === cat
+                        ? "bg-white shadow-sm text-slate-900"
+                        : "text-slate-500 hover:text-slate-800"
+                    }`}
+                  >
+                    {cat}
+                  </button>
+                ))}
+              </div>
+
+              {/* Measurement form */}
+              <form onSubmit={handleAddMeasurement} className="grid gap-3">
+
+                {/* Room */}
+                <div>
+                  <label className="text-xs font-medium text-slate-700 block mb-1">
+                    Room
+                  </label>
+                  <select
+                    value={form.room_id}
+                    onChange={(e) =>
+                      setForm((prev) => ({ ...prev, room_id: e.target.value }))
+                    }
+                    className="w-full border border-slate-300 bg-white px-3 py-2 rounded-md shadow-sm text-sm"
+                    required
+                  >
+                    <option value="">Select room</option>
+                    {rooms.map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {r.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Metric */}
+                <div>
+                  <label className="text-xs font-medium text-slate-700 block mb-1">
+                    Metric
+                  </label>
+
+                  <select
+                    value={form.metric}
+                    onChange={(e) => handleMetricChange(e.target.value)}
+                    className="w-full border border-slate-300 bg-white px-3 py-2 rounded-md shadow-sm text-sm"
+                  >
+                    {metricOptions[form.category as "air" | "water" | "ether"].map(
+                      (m) => (
+                        <option key={m.key} value={m.key}>
+                          {m.label}
+                        </option>
+                      )
+                    )}
+                  </select>
+                </div>
+
+                {/* Value */}
+                <div>
+                  <label className="text-xs font-medium text-slate-700 block mb-1">
+                    Value
+                  </label>
+                  <SaInput
+                    demo=""
+                    type="number"
+                    value={form.value}
+                    onChange={(v) =>
+                      setForm((prev) => ({ ...prev, value: v }))
+                    }
+                  />
+                </div>
+
+                {/* Unit (LOCKED) */}
+                <div>
+                  <label className="text-xs font-medium text-slate-700 block mb-1">
+                    Unit
+                  </label>
+                  <input
+                    value={form.unit}
+                    disabled
+                    className="w-full border border-slate-300 bg-slate-100 text-slate-500 px-3 py-2 rounded-md shadow-sm text-sm cursor-not-allowed"
+                  />
+                </div>
+
+                {/* Notes */}
+                <div>
+                  <label className="text-xs font-medium text-slate-700 block mb-1">
+                    Notes (optional)
+                  </label>
+                  <SaInput
+                    demo="Any context…"
+                    value={form.notes}
+                    onChange={(v) =>
+                      setForm((prev) => ({ ...prev, notes: v }))
+                    }
+                  />
+                </div>
+
+                {/* Submit */}
+                <div className="mt-2">
+                  <button
+                    type="submit"
+                    className="bg-blue-600 text-white px-4 py-2 text-xs rounded-md shadow-sm hover:bg-blue-700"
+                  >
+                    Add Measurement
                   </button>
                 </div>
-              ))}
+              </form>
             </div>
-          )}
-        </div>
+          </div>
 
-        {/* ─── Measurement Form ─────────────────────── */}
-        <div className="card mb-10 border border-slate-100">
-          <h2 className="h2 mb-4">Add Measurement</h2>
-          <form onSubmit={handleAddMeasurement} className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-            <select
-              value={form.room_id}
-              onChange={(e) => setForm({ ...form, room_id: e.target.value })}
-              className="select"
-              required
-            >
-              <option value="">Select Room</option>
-              {rooms.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.name}
-                </option>
-              ))}
-            </select>
+          {/* RIGHT COLUMN — LOG ======================================== */}
+          <div className="rounded-2xl bg-white/80 border border-slate-200 shadow-sm p-5">
+            <div className="mb-4 flex justify-between items-center">
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                  Log
+                </div>
+                <h2 className="text-sm font-semibold text-slate-900 mt-1">
+                  Measurements
+                </h2>
+              </div>
 
-            <select
-              value={form.category}
-              onChange={(e) => handleCategoryChange(e.target.value)}
-              className="select"
-            >
-              <option value="air">Air</option>
-              <option value="water">Water</option>
-              <option value="ether">Ether</option>
-            </select>
-
-            <select
-              value={form.metric}
-              onChange={(e) => {
-                const selected = metricOptions[form.category].find((m) => m.metric === e.target.value);
-                setForm({
-                  ...form,
-                  metric: e.target.value,
-                  unit: selected ? selected.unit : "",
-                });
-              }}
-              className="select"
-            >
-              {metricOptions[form.category].map((m) => (
-                <option key={m.metric} value={m.metric}>
-                  {m.metric}
-                </option>
-              ))}
-            </select>
-
-            <input
-              placeholder="Value"
-              value={form.value}
-              onChange={(e) => setForm({ ...form, value: e.target.value })}
-              type="number"
-              step="any"
-              className="input"
-              required
-            />
-
-            <input
-              placeholder="Unit"
-              value={form.unit}
-              onChange={(e) => setForm({ ...form, unit: e.target.value })}
-              className="input"
-            />
-
-            <input
-              placeholder="Notes (optional)"
-              value={form.notes}
-              onChange={(e) => setForm({ ...form, notes: e.target.value })}
-              className="input col-span-full"
-            />
-
-            <button type="submit" className="btn col-span-full sm:col-span-1">
-              Add Measurement
-            </button>
-          </form>
-        </div>
-
-        {/* ─── Measurement Table ─────────────────────── */}
-        <div className="card border border-slate-100">
-          <h2 className="h2 mb-4">Measurements</h2>
-          {measurements.length === 0 ? (
-            <p className="subtle">No measurements logged yet.</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="min-w-full text-sm border-collapse">
-                <thead className="bg-gray-100 text-left">
-                  <tr>
-                    <th className="py-2 px-3 border-b">Room</th>
-                    <th className="py-2 px-3 border-b">Category</th>
-                    <th className="py-2 px-3 border-b">Metric</th>
-                    <th className="py-2 px-3 border-b">Value</th>
-                    <th className="py-2 px-3 border-b">Unit</th>
-                    <th className="py-2 px-3 border-b">Notes</th>
-                    <th className="py-2 px-3 border-b">Time</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {measurements.map((m) => {
-                    const room = rooms.find((r) => r.id === m.room_id);
-                    return (
-                      <tr key={m.id} className="hover:bg-gray-50">
-                        <td className="py-2 px-3 border-b">{room ? room.name : "—"}</td>
-                        <td className="py-2 px-3 border-b capitalize">{m.category}</td>
-                        <td className="py-2 px-3 border-b">{m.metric}</td>
-                        <td className="py-2 px-3 border-b">{m.value}</td>
-                        <td className="py-2 px-3 border-b">{m.unit}</td>
-                        <td className="py-2 px-3 border-b">{m.notes || "—"}</td>
-                        <td className="py-2 px-3 border-b text-[var(--muted)]">
-                          {new Date(m.taken_at).toLocaleString()}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+              <span className="text-[11px] text-slate-500">
+                {measurements.length} entries
+              </span>
             </div>
-          )}
+
+            {measurements.length === 0 ? (
+              <p className="border border-dashed border-slate-200 rounded-md bg-slate-50/60 px-3 py-3 text-xs text-slate-500">
+                No measurements yet.
+              </p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-xs border-collapse">
+                  <thead className="bg-slate-50 text-slate-500 text-[11px]">
+                    <tr>
+                      <th className="px-3 py-2 border-b border-slate-200">Room</th>
+                      <th className="px-3 py-2 border-b border-slate-200">Category</th>
+                      <th className="px-3 py-2 border-b border-slate-200">Metric</th>
+                      <th className="px-3 py-2 border-b border-slate-200">Value</th>
+                      <th className="px-3 py-2 border-b border-slate-200">Unit</th>
+                      <th className="px-3 py-2 border-b border-slate-200">Notes</th>
+                      <th className="px-3 py-2 border-b border-slate-200">Time</th>
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {measurements.map((m, idx) => {
+                      const room = rooms.find((r) => r.id === m.room_id);
+                      const prettyName =
+                        metricOptions.air.find((x) => x.key === m.metric)?.label ||
+                        metricOptions.water.find((x) => x.key === m.metric)?.label ||
+                        metricOptions.ether.find((x) => x.key === m.metric)?.label ||
+                        m.metric;
+
+                      return (
+                        <tr
+                          key={m.id}
+                          className={idx % 2 ? "bg-slate-50/40" : "bg-white"}
+                        >
+                          <td className="px-3 py-2 border-b border-slate-100">
+                            {room?.name ?? "—"}
+                          </td>
+                          <td className="px-3 py-2 border-b border-slate-100 capitalize">
+                            {m.category}
+                          </td>
+                          <td className="px-3 py-2 border-b border-slate-100">
+                            {prettyName}
+                          </td>
+                          <td className="px-3 py-2 border-b border-slate-100">
+                            {m.value}
+                          </td>
+                          <td className="px-3 py-2 border-b border-slate-100">
+                            {m.unit}
+                          </td>
+                          <td className="px-3 py-2 border-b border-slate-100">
+                            {m.notes || "—"}
+                          </td>
+                          <td className="px-3 py-2 border-b border-slate-100 whitespace-nowrap text-[11px] text-slate-500">
+                            {new Date(m.taken_at).toLocaleString()}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </div>
-      </div>
+      </main>
+
+      {toast && (
+        <div className="fixed top-4 right-4 bg-slate-900 text-white text-xs px-4 py-2 rounded-lg shadow-lg">
+          {toast}
+        </div>
+      )}
     </div>
   );
 }

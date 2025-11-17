@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { supabase } from "@/lib/supabaseClient";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabaseClient";
+import Link from "next/link";
 
 type Property = {
   id: string;
@@ -17,177 +18,203 @@ type Property = {
 };
 
 export default function TechnicianDashboard() {
+  const router = useRouter();
   const [properties, setProperties] = useState<Property[]>([]);
   const [loading, setLoading] = useState(true);
-  const [newProperty, setNewProperty] = useState({
-    address: "",
-    city: "",
-    state: "TX",
-    zip: "",
-    sqft: "",
-    year_built: "",
-    primary_contact_email: "",
-  });
-  const router = useRouter();
+  const [error, setError] = useState<string | null>(null);
 
-  // Load properties
   useEffect(() => {
     fetchProperties();
   }, []);
 
-  const fetchProperties = async () => {
+  async function fetchProperties() {
     setLoading(true);
+    setError(null);
+
     const { data, error } = await supabase
       .from("property")
       .select("*")
       .order("created_at", { ascending: false });
-    if (error) console.error(error);
-    else setProperties(data || []);
-    setLoading(false);
-  };
 
-  const handleCreateProperty = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const { address, city, state, zip, sqft, year_built, primary_contact_email } =
-      newProperty;
-
-    const { error } = await supabase.from("property").insert([
-      {
-        address,
-        city,
-        state,
-        zip,
-        sqft: sqft ? parseInt(sqft) : null,
-        year_built: year_built ? parseInt(year_built) : null,
-        primary_contact_email,
-      },
-    ]);
-
-    if (error) alert("Error creating property: " + error.message);
-    else {
-      setNewProperty({
-        address: "",
-        city: "",
-        state: "TX",
-        zip: "",
-        sqft: "",
-        year_built: "",
-        primary_contact_email: "",
-      });
-      fetchProperties();
+    if (error) {
+      console.error(error);
+      setError("Unable to load properties.");
+      setProperties([]);
+    } else {
+      setProperties(data || []);
     }
-  };
+
+    setLoading(false);
+  }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-8">
-      <h1 className="text-3xl font-bold mb-6">🏠 Technician Dashboard</h1>
+    <div className="min-h-screen bg-slate-50 text-slate-900">
+      {/* HEADER (SaSo-style) */}
+      <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/80 backdrop-blur">
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
+          <div className="flex items-center gap-3">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-900 text-xs font-bold text-white">
+              Sa
+            </div>
+            <div className="flex flex-col">
+              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                Sanctuary Solutions
+              </div>
+              <div className="text-[13px] font-medium tracking-tight text-slate-800">
+                Technician Workspace
+              </div>
+            </div>
+          </div>
 
-      {/* Create New Property Form */}
-      <form
-        onSubmit={handleCreateProperty}
-        className="bg-white p-6 rounded-lg shadow-md mb-10 max-w-2xl"
-      >
-        <h2 className="text-xl font-semibold mb-4">Add New Property</h2>
-        <div className="grid grid-cols-2 gap-4">
-          <input
-            placeholder="Address"
-            value={newProperty.address}
-            onChange={(e) =>
-              setNewProperty({ ...newProperty, address: e.target.value })
-            }
-            className="border p-2 rounded"
-            required
-          />
-          <input
-            placeholder="City"
-            value={newProperty.city}
-            onChange={(e) =>
-              setNewProperty({ ...newProperty, city: e.target.value })
-            }
-            className="border p-2 rounded"
-            required
-          />
-          <input
-            placeholder="State"
-            value={newProperty.state}
-            onChange={(e) =>
-              setNewProperty({ ...newProperty, state: e.target.value })
-            }
-            className="border p-2 rounded"
-          />
-          <input
-            placeholder="ZIP"
-            value={newProperty.zip}
-            onChange={(e) =>
-              setNewProperty({ ...newProperty, zip: e.target.value })
-            }
-            className="border p-2 rounded"
-            required
-          />
-          <input
-            placeholder="Sqft"
-            value={newProperty.sqft}
-            onChange={(e) =>
-              setNewProperty({ ...newProperty, sqft: e.target.value })
-            }
-            className="border p-2 rounded"
-            type="number"
-          />
-          <input
-            placeholder="Year Built"
-            value={newProperty.year_built}
-            onChange={(e) =>
-              setNewProperty({ ...newProperty, year_built: e.target.value })
-            }
-            className="border p-2 rounded"
-            type="number"
-          />
-          <input
-            placeholder="Email"
-            value={newProperty.primary_contact_email}
-            onChange={(e) =>
-              setNewProperty({
-                ...newProperty,
-                primary_contact_email: e.target.value,
-              })
-            }
-            className="border p-2 rounded col-span-2"
-            type="email"
-          />
+          <nav className="hidden items-center gap-4 text-xs text-slate-500 md:flex">
+            <span className="font-medium text-slate-900">Dashboard</span>
+            <Link href="/technician/new" className="hover:text-slate-900">
+              New Property
+            </Link>
+            <Link href="/report" className="hover:text-slate-900">
+              Client Report
+            </Link>
+          </nav>
         </div>
-        <button
-          type="submit"
-          className="mt-4 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
-        >
-          Add Property
-        </button>
-      </form>
+      </header>
 
-      {/* Property List */}
-      <h2 className="text-xl font-semibold mb-4">Existing Properties</h2>
-      {loading ? (
-        <p>Loading...</p>
-      ) : properties.length === 0 ? (
-        <p>No properties yet.</p>
-      ) : (
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {properties.map((p) => (
-            <div
-              key={p.id}
-              onClick={() => router.push(`/technician/${p.id}`)}
-              className="cursor-pointer bg-white p-4 rounded-lg shadow hover:shadow-lg transition"
+      {/* MAIN */}
+      <main className="mx-auto max-w-6xl px-4 py-8">
+        {/* Header Row */}
+        <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+              Overview
+            </div>
+            <h1 className="mt-1 text-2xl font-semibold tracking-tight">
+              Technician Dashboard
+            </h1>
+            <p className="mt-1 text-sm text-slate-500 max-w-md">
+              Configure properties and capture on-site measurements before generating client-facing Home Health Reports.
+            </p>
+          </div>
+
+          <div className="flex gap-2">
+            <button
+              onClick={fetchProperties}
+              className="hidden rounded-md border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600 shadow-sm hover:border-slate-300 hover:text-slate-900 md:inline-flex"
             >
-              <h3 className="text-lg font-semibold">{p.address}</h3>
-              <p className="text-gray-600">
-                {p.city}, {p.state} {p.zip}
-              </p>
-              <p className="text-sm text-gray-400 mt-2">
-                Added: {new Date(p.created_at).toLocaleDateString()}
+              Refresh
+            </button>
+            <Link
+              href="/technician/new"
+              className="inline-flex items-center rounded-md bg-blue-600 px-4 py-2 text-xs font-medium text-white shadow-sm hover:bg-blue-700"
+            >
+              + New Property
+            </Link>
+          </div>
+        </div>
+
+        {/* Properties Card */}
+        <div className="rounded-2xl border border-slate-200 bg-white/80 p-5 shadow-sm">
+          <div className="mb-4 flex items-center justify-between">
+            <div>
+              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                Properties
+              </div>
+              <p className="mt-1 text-xs text-slate-500">
+                Select a property to begin capturing room-by-room measurements.
               </p>
             </div>
-          ))}
+
+            {properties.length > 0 && (
+              <span className="text-[11px] text-slate-500">
+                {properties.length} property{properties.length > 1 ? " entries" : ""}
+              </span>
+            )}
+          </div>
+
+          {/* Loading */}
+          {loading && (
+            <div className="flex items-center gap-3 text-sm text-slate-500">
+              <div className="h-4 w-4 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600" />
+              Loading properties…
+            </div>
+          )}
+
+          {/* Error */}
+          {!loading && error && (
+            <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+              {error}
+            </div>
+          )}
+
+          {/* Empty State */}
+          {!loading && !error && properties.length === 0 && (
+            <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50/60 px-6 py-10 text-center">
+              <p className="text-sm font-medium text-slate-700">
+                No properties yet.
+              </p>
+              <p className="mt-1 text-xs text-slate-500 max-w-sm">
+                Create your first property to begin a new environmental assessment.
+              </p>
+
+              <Link
+                href="/technician/new"
+                className="mt-4 inline-flex items-center rounded-md bg-blue-600 px-4 py-2 text-xs font-medium text-white shadow-sm hover:bg-blue-700"
+              >
+                Create first property
+              </Link>
+            </div>
+          )}
+
+          {/* Property Grid */}
+          {!loading && !error && properties.length > 0 && (
+            <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+              {properties.map((p) => {
+                const address = p.address || "Unnamed property";
+                const cityLine = [p.city, p.state, p.zip].filter(Boolean).join(", ");
+
+                return (
+                  <button
+                    key={p.id}
+                    onClick={() => router.push(`/technician/${p.id}`)}
+                    className="flex flex-col rounded-xl border border-slate-200 bg-white px-4 py-3 text-left text-sm shadow-sm transition hover:border-blue-100 hover:bg-blue-50/40 hover:shadow-md"
+                  >
+                    <div className="mb-1 flex items-center justify-between">
+                      <div className="truncate text-[13px] font-semibold text-slate-900">
+                        {address}
+                      </div>
+                      <span className="rounded-full bg-slate-50 px-2 py-0.5 text-[10px] font-medium text-slate-500">
+                        {new Date(p.created_at).toLocaleDateString()}
+                      </span>
+                    </div>
+
+                    <div className="truncate text-[12px] text-slate-600">
+                      {cityLine || "Location not provided"}
+                    </div>
+
+                    <div className="mt-2 flex flex-wrap gap-1.5 text-[11px] text-slate-500">
+                      {p.sqft && (
+                        <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5">
+                          {p.sqft.toLocaleString()} sqft
+                        </span>
+                      )}
+
+                      {p.year_built && (
+                        <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5">
+                          Built {p.year_built}
+                        </span>
+                      )}
+
+                      {p.primary_contact_email && (
+                        <span className="max-w-[180px] truncate rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5">
+                          {p.primary_contact_email}
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
-      )}
+      </main>
     </div>
   );
 }

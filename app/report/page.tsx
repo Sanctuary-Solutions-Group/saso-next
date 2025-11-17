@@ -31,15 +31,12 @@ import {
   humidityCaution,
 } from "@/lib/scoring/air";
 
-
 // -----------------------------------------------------------------------------
 // Sanctuary Solutions – LIVE Dashboard Report (Supabase-wired)
 // Route: /app/report/page.tsx  (App Router)
-// - Pulls latest property + measurements from Supabase
-// - Computes Air/Water/Ether scores based on SaSo v1.1 thresholds
-// - Renders the same aesthetic you liked (snapshot → metrics → compare → action)
-// - Ozone chart REMOVED per request
-// - Enhanced with micro-interactions & motion for a premium feel
+// - Pulls latest property + rooms + measurements from Supabase
+// - Uses *worst* (max) readings per metric across all rooms
+// - Adds Room-by-Room Analysis section (Icon Cards)
 // -----------------------------------------------------------------------------
 
 // ====== CONFIG / THEME ======
@@ -80,18 +77,6 @@ const THRESHOLDS: Record<string, { goodMax: number; fairMax: number; unit: strin
   RF: { goodMax: 0.1, fairMax: 1.0, unit: "mW/m²" },
 };
 
-// Weights for category scoring (v1.1) – still used for Ether
-const WEIGHTS_AIR: Record<string, number> = {
-  CO2: 0.25,
-  PM25: 0.25,
-  PM10: 0.1,
-  VOCs: 0.2,
-  Humidity: 0.1,
-  Temp: 0.1,
-};
-const WEIGHTS_WATER: Record<string, number> = { TDS: 0.4, Cl: 0.3, pH: 0.3 };
-const WEIGHTS_ETHER: Record<string, number> = { MagField: 0.3, ElectricField: 0.3, RF: 0.4 };
-
 // Overall category weights
 const OVERALL_WEIGHTS = {
   air: 0.45,
@@ -120,32 +105,46 @@ type CategoryKey = "air" | "water" | "ether";
 interface MeasurementRow {
   id: string;
   property_id: string;
-  metric: MetricKey; // <-- EXACT Supabase column name
+  room_id: string | null;
+  category: string | null;
+  metric: MetricKey | string;
   value: number;
   unit: string | null;
-  location: string | null;
+  notes: string | null;
+  taken_at: string | null;
   created_at: string;
 }
 
-// Property row
+// Property row (aligned with current technician schema)
 interface PropertyRow {
   id: string;
-  address_line1: string | null;
-  address_line2: string | null;
+  address: string | null;
   city: string | null;
   state: string | null;
-  postal_code: string | null;
+  zip: string | null;
   sqft: number | null;
-  bedrooms: number | null;
-  bathrooms: number | null;
+  year_built: number | null;
+  primary_contact_email: string | null;
   occupants_adults: number | null;
   occupants_children: number | null;
-  pets: string | null;
+  occupants_animals: number | null;
+  occupants_allergies: boolean | null;
+  occupants_asthma: boolean | null;
   created_at: string;
 }
 
-// Utility to get category from metric key
-function getCategory(metricKey: MetricKey): CategoryKey {
+// Room row
+interface RoomRow {
+  id: string;
+  property_id: string;
+  name: string;
+  type: string | null;
+  order_index: number | null;
+  created_at: string;
+}
+
+// Utility to get category from metric key (fallback when category is missing)
+function getCategoryFromMetric(metricKey: MetricKey): CategoryKey {
   switch (metricKey) {
     case "CO2":
     case "PM25":
@@ -167,6 +166,38 @@ function getCategory(metricKey: MetricKey): CategoryKey {
   }
 }
 
+// Pretty label mapping for client-facing UI
+function prettyMetricLabel(metric: MetricKey | string): string {
+  switch (metric as MetricKey) {
+    case "CO2":
+      return "CO₂";
+    case "PM25":
+      return "PM₂.₅";
+    case "PM10":
+      return "PM₁₀";
+    case "VOCs":
+      return "VOCs";
+    case "Humidity":
+      return "Humidity";
+    case "Temp":
+      return "Temperature";
+    case "TDS":
+      return "Total Dissolved Solids (TDS)";
+    case "Cl":
+      return "Free Chlorine";
+    case "pH":
+      return "pH";
+    case "MagField":
+      return "Magnetic Field (ELF)";
+    case "ElectricField":
+      return "Electric Field";
+    case "RF":
+      return "Radiofrequency (RF)";
+    default:
+      return typeof metric === "string" ? metric : String(metric);
+  }
+}
+
 // Map raw value to a 0–100 metric score based on good/fair thresholds
 function metricScore(value: number, goodMax: number, fairMax: number): number {
   if (value <= goodMax) return 100;
@@ -176,19 +207,6 @@ function metricScore(value: number, goodMax: number, fairMax: number): number {
   }
   const t = Math.min(1, (value - fairMax) / fairMax);
   return Math.round(60 - t * 60); // 60 → 0
-}
-
-// Weighted category score using metric scores
-function weightedCategoryScore(metricScores: Record<MetricKey, number>, weights: Record<string, number>): number {
-  let totalWeight = 0;
-  let sum = 0;
-  for (const k of Object.keys(weights)) {
-    const w = weights[k];
-    const s = metricScores[k as MetricKey] ?? 0;
-    totalWeight += w;
-    sum += s * w;
-  }
-  return totalWeight > 0 ? Math.round(sum / totalWeight) : 0;
 }
 
 // Helpers for status styles
@@ -251,12 +269,19 @@ const Section = ({
   title: string;
   children: React.ReactNode;
 }) => (
-  <section id={id} className="scroll-mt-24 border-t border-slate-200 bg-white/80 py-10 backdrop-blur-sm">
+  <section
+    id={id}
+    className="scroll-mt-24 border-t border-slate-200 bg-white/80 py-10 backdrop-blur-sm"
+  >
     <div className="mx-auto max-w-6xl px-4">
       <div className="mb-6 flex items-baseline justify-between gap-2">
         <div>
-          <div className="text-xs font-semibold uppercase tracking-[0.15em] text-slate-500">{label}</div>
-          <h2 className="mt-1 text-xl font-semibold tracking-tight text-slate-900">{title}</h2>
+          <div className="text-xs font-semibold uppercase tracking-[0.15em] text-slate-500">
+            {label}
+          </div>
+          <h2 className="mt-1 text-xl font-semibold tracking-tight text-slate-900">
+            {title}
+          </h2>
         </div>
       </div>
       {children}
@@ -346,7 +371,13 @@ const ExpandableCard = ({
 };
 
 // Simple card
-const Card = ({ children, className = "" }: { children: React.ReactNode; className?: string }) => (
+const Card = ({
+  children,
+  className = "",
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) => (
   <div
     className={`rounded-2xl border border-slate-200 bg-white/80 p-4 shadow-sm transition hover:border-slate-300 hover:shadow-md ${className}`}
   >
@@ -361,11 +392,25 @@ const Chip = ({ children }: { children: React.ReactNode }) => (
   </span>
 );
 
+// Room emoji icon helper (Option B – Icon Card vibe)
+function roomIcon(room: RoomRow): string {
+  const name = room.name.toLowerCase();
+  if (name.includes("primary") || name.includes("master")) return "🛏️";
+  if (name.includes("bed")) return "🛏️";
+  if (name.includes("kitchen")) return "🍳";
+  if (name.includes("living")) return "🛋️";
+  if (name.includes("office")) return "💻";
+  if (name.includes("nursery") || name.includes("kid")) return "🧸";
+  if (name.includes("bath")) return "🚿";
+  return "📍";
+}
+
 // Main Report Page
 export default function ReportPage() {
   const [loading, setLoading] = useState(true);
   const [property, setProperty] = useState<PropertyRow | null>(null);
   const [measurements, setMeasurements] = useState<MeasurementRow[]>([]);
+  const [rooms, setRooms] = useState<RoomRow[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   // Generate Magic Link for this property
@@ -389,9 +434,7 @@ export default function ReportPage() {
         return;
       }
 
-      // Copy to clipboard for convenience
       await navigator.clipboard.writeText(out.link);
-
       alert(`Share link copied!\n\n${out.link}`);
     } catch (err) {
       console.error(err);
@@ -399,21 +442,20 @@ export default function ReportPage() {
     }
   };
 
-
-  // Fetch property + measurements (supports magic link)
+  // Fetch property + rooms + measurements (supports magic link)
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true);
       setError(null);
 
-      // 1️. Read token from URL
+      // 1. Read token from URL
       const params = new URLSearchParams(window.location.search);
       const token = params.get("token");
 
       let propertyIdToLoad: string | null = null;
 
       if (token) {
-        // 2️. Validate token
+        // 2. Validate token
         const { data: accessRow, error: accessError } = await supabase
           .from("report_access")
           .select("property_id, expires_at")
@@ -426,18 +468,17 @@ export default function ReportPage() {
           return;
         }
 
-        // 3️. Check expiration
+        // 3. Check expiration
         if (accessRow.expires_at && new Date(accessRow.expires_at) < new Date()) {
           setError("This link has expired.");
           setLoading(false);
           return;
         }
 
-        // 4️. Valid token → load this property
         propertyIdToLoad = accessRow.property_id;
       }
 
-      // 5️. If no token, fallback to latest property
+      // 4. If no token, fallback to latest property
       if (!propertyIdToLoad) {
         const { data: propertyRows, error: propertyError } = await supabase
           .from("property")
@@ -451,11 +492,11 @@ export default function ReportPage() {
           return;
         }
 
-        const latestProperty = propertyRows[0];
+        const latestProperty = propertyRows[0] as PropertyRow;
         setProperty(latestProperty);
         propertyIdToLoad = latestProperty.id;
       } else {
-        // 6️. Load property by ID (magic link path)
+        // 5. Load property by ID (magic link path)
         const { data: propertyRow, error: propertyErr } = await supabase
           .from("property")
           .select("*")
@@ -468,10 +509,10 @@ export default function ReportPage() {
           return;
         }
 
-        setProperty(propertyRow);
+        setProperty(propertyRow as PropertyRow);
       }
 
-      // 7️. Load measurements for the chosen property
+      // 6. Load measurements for the chosen property
       const { data: measurementRows, error: measurementError } = await supabase
         .from("measurement")
         .select("*")
@@ -484,15 +525,57 @@ export default function ReportPage() {
         return;
       }
 
-      setMeasurements(measurementRows ?? []);
+      setMeasurements((measurementRows ?? []) as MeasurementRow[]);
+
+      // 7. Load rooms for this property
+      const { data: roomRows, error: roomError } = await supabase
+        .from("room")
+        .select("*")
+        .eq("property_id", propertyIdToLoad)
+        .order("order_index", { ascending: true });
+
+      if (roomError) {
+        console.error(roomError);
+        setRooms([]);
+      } else {
+        setRooms((roomRows ?? []) as RoomRow[]);
+      }
+
       setLoading(false);
     };
 
     fetchData();
   }, []);
 
+  // ========= METRIC AGGREGATION (MAX ACROSS ROOMS) =========
   const M = useMemo(() => {
-    const base: Record<MetricKey, number> = {
+    // Start with null (no reading); later convert to 0 for scoring
+    const base: Record<MetricKey, number | null> = {
+      CO2: null,
+      PM25: null,
+      PM10: null,
+      VOCs: null,
+      Humidity: null,
+      Temp: null,
+      TDS: null,
+      Cl: null,
+      pH: null,
+      MagField: null,
+      ElectricField: null,
+      RF: null,
+    };
+
+    for (const row of measurements) {
+      const key = row.metric as MetricKey;
+      if (!(key in base)) continue;
+      const current = base[key];
+      // "Most concerning" = highest value, for now (we can refine per-metric later if needed)
+      if (current === null || row.value > current) {
+        base[key] = row.value;
+      }
+    }
+
+    const result: Record<MetricKey, number> = {
       CO2: 0,
       PM25: 0,
       PM10: 0,
@@ -507,13 +590,11 @@ export default function ReportPage() {
       RF: 0,
     };
 
-    for (const row of measurements) {
-      if (!row.metric || base[row.metric] === undefined) continue;
-      // For now: assume one reading per metric per property; if multiple, we could average
-      base[row.metric] = row.value;
-    }
+    (Object.keys(base) as MetricKey[]).forEach((k) => {
+      result[k] = base[k] ?? 0;
+    });
 
-    return base;
+    return result;
   }, [measurements]);
 
   const metricScores = useMemo(() => {
@@ -542,7 +623,7 @@ export default function ReportPage() {
     return s;
   }, [M]);
 
-  // Category scores
+  // Category scores (still using your scoring engines)
   const airScore = useMemo(
     () =>
       computeAirScore({
@@ -573,11 +654,12 @@ export default function ReportPage() {
     [M]
   );
 
-
   const overallScore = useMemo(
     () =>
       Math.round(
-        airScore * OVERALL_WEIGHTS.air + waterScore * OVERALL_WEIGHTS.water + etherScore * OVERALL_WEIGHTS.ether
+        airScore * OVERALL_WEIGHTS.air +
+          waterScore * OVERALL_WEIGHTS.water +
+          etherScore * OVERALL_WEIGHTS.ether
       ),
     [airScore, waterScore, etherScore]
   );
@@ -610,13 +692,32 @@ export default function ReportPage() {
     [M.CO2]
   );
 
+  // Group measurements by room for Room-by-Room Analysis
+  const measurementsByRoom = useMemo(() => {
+    const map: Record<string, MeasurementRow[]> = {};
+    for (const m of measurements) {
+      const roomId = m.room_id;
+      if (!roomId) continue;
+      if (!map[roomId]) map[roomId] = [];
+      map[roomId].push(m);
+    }
+    return map;
+  }, [measurements]);
+
+  const unassignedMeasurements = useMemo(
+    () => measurements.filter((m) => !m.room_id),
+    [measurements]
+  );
+
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-50">
         <div className="mx-auto flex min-h-screen max-w-6xl items-center justify-center px-4">
           <div className="flex flex-col items-center gap-4">
             <div className="h-10 w-10 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600" />
-            <p className="text-sm text-slate-500">Building your Home Health Report…</p>
+            <p className="text-sm text-slate-500">
+              Building your Home Health Report…
+            </p>
           </div>
         </div>
       </div>
@@ -628,9 +729,12 @@ export default function ReportPage() {
       <div className="min-h-screen bg-slate-50">
         <div className="mx-auto flex min-h-screen max-w-6xl items-center justify-center px-4">
           <Card className="max-w-md text-center">
-            <h1 className="text-lg font-semibold text-slate-900">No properties found</h1>
+            <h1 className="text-lg font-semibold text-slate-900">
+              No properties found
+            </h1>
             <p className="mt-2 text-sm text-slate-600">
-              Once you complete your first on-site assessment, your full Home Health Report will appear here.
+              Once you complete your first on-site assessment, your full Home
+              Health Report will appear here.
             </p>
           </Card>
         </div>
@@ -653,8 +757,39 @@ export default function ReportPage() {
   const pm25Status = pm25Label(M.PM25 ?? 0);
   const pm10Status = pm10Label(M.PM10 ?? 0);
 
-  const addressLine = [property.address_line1, property.address_line2].filter(Boolean).join(", ");
-  const cityLine = [property.city, property.state, property.postal_code].filter(Boolean).join(", ");
+  const addressLine = property.address || "";
+  const cityLine = [property.city, property.state, property.zip]
+    .filter(Boolean)
+    .join(", ");
+
+  const occupantChips: string[] = [];
+  if (property.occupants_adults != null) {
+    occupantChips.push(
+      `${property.occupants_adults} adult${
+        property.occupants_adults === 1 ? "" : "s"
+      }`
+    );
+  }
+  if (property.occupants_children != null) {
+    occupantChips.push(
+      `${property.occupants_children} child${
+        property.occupants_children === 1 ? "" : "ren"
+      }`
+    );
+  }
+  if (property.occupants_animals != null) {
+    occupantChips.push(
+      `${property.occupants_animals} pet${
+        property.occupants_animals === 1 ? "" : "s"
+      }`
+    );
+  }
+  if (property.occupants_allergies) {
+    occupantChips.push("Allergies noted");
+  }
+  if (property.occupants_asthma) {
+    occupantChips.push("Asthma present");
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
@@ -681,6 +816,9 @@ export default function ReportPage() {
             <a href="#expandables" className="hover:text-slate-900">
               Metrics
             </a>
+            <a href="#rooms" className="hover:text-slate-900">
+              Rooms
+            </a>
             <a href="#compare" className="hover:text-slate-900">
               Compare
             </a>
@@ -700,34 +838,44 @@ export default function ReportPage() {
               className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full bg-sky-100"
               initial={{ opacity: 0, scale: 0.8, x: 40, y: -20 }}
               animate={{ opacity: 1, scale: 1, x: 0, y: 0 }}
-              transition={{ type: "spring", stiffness: 120, damping: 22, delay: 0.15 }}
+              transition={{
+                type: "spring",
+                stiffness: 120,
+                damping: 22,
+                delay: 0.15,
+              }}
             />
             <div className="relative space-y-4">
-
               {/* Share Link Button */}
               <button
                 onClick={generateLink}
-                className="px-3 py-2 rounded-md bg-blue-600 text-white text-sm hover:bg-blue-700 transition"
+                className="rounded-md bg-blue-600 px-3 py-2 text-sm text-white transition hover:bg-blue-700"
               >
                 Generate Share Link
               </button>
 
               <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
                 <div>
-                  <h1 className="text-3xl font-bold tracking-tight">Home Health Report</h1>
+                  <h1 className="text-3xl font-bold tracking-tight">
+                    Home Health Report
+                  </h1>
                   <p className="mt-1 text-slate-600">
-                    Most recent property · {new Date(property.created_at).toLocaleDateString()} ·{" "}
+                    Most recent property ·{" "}
+                    {new Date(property.created_at).toLocaleDateString()} ·{" "}
                     {property.city ?? ""}
                     {property.city ? ", " : ""}
                     {property.state ?? ""}
                   </p>
                   <p className="mt-2 text-slate-700">
-                    Categories tested: <strong>Air</strong> · <strong>Water</strong> · <strong>Ether</strong>
+                    Categories tested: <strong>Air</strong> ·{" "}
+                    <strong>Water</strong> · <strong>Ether</strong>
                   </p>
                 </div>
 
                 <Card className="md:min-w-[340px]">
-                  <div className="text-xs uppercase tracking-wide text-slate-500">Overall Home Health</div>
+                  <div className="text-xs uppercase tracking-wide text-slate-500">
+                    Overall Home Health
+                  </div>
                   <div className="mt-2 flex items-end justify-between">
                     <motion.div
                       className="text-4xl font-bold"
@@ -743,7 +891,12 @@ export default function ReportPage() {
                       }}
                       initial={{ opacity: 0, y: 8 }}
                       animate={{ opacity: 1, y: 0 }}
-                      transition={{ type: "spring", stiffness: 160, damping: 20, delay: 0.1 }}
+                      transition={{
+                        type: "spring",
+                        stiffness: 160,
+                        damping: 20,
+                        delay: 0.1,
+                      }}
                     >
                       {overallScore}
                     </motion.div>
@@ -762,19 +915,37 @@ export default function ReportPage() {
                   </div>
                   <div className="mt-3 grid grid-cols-3 gap-2 text-[11px]">
                     <div className="flex flex-col rounded-lg bg-slate-50 px-2.5 py-1.5">
-                      <span className="text-[10px] uppercase tracking-wide text-slate-500">Air</span>
-                      <span className="mt-1 text-sm font-semibold text-slate-900">{airScore}</span>
-                      <span className="text-[10px] text-slate-500">{airLabel}</span>
+                      <span className="text-[10px] uppercase tracking-wide text-slate-500">
+                        Air
+                      </span>
+                      <span className="mt-1 text-sm font-semibold text-slate-900">
+                        {airScore}
+                      </span>
+                      <span className="text-[10px] text-slate-500">
+                        {airLabel}
+                      </span>
                     </div>
                     <div className="flex flex-col rounded-lg bg-slate-50 px-2.5 py-1.5">
-                      <span className="text-[10px] uppercase tracking-wide text-slate-500">Water</span>
-                      <span className="mt-1 text-sm font-semibold text-slate-900">{waterScore}</span>
-                      <span className="text-[10px] text-slate-500">{waterLabel}</span>
+                      <span className="text-[10px] uppercase tracking-wide text-slate-500">
+                        Water
+                      </span>
+                      <span className="mt-1 text-sm font-semibold text-slate-900">
+                        {waterScore}
+                      </span>
+                      <span className="text-[10px] text-slate-500">
+                        {waterLabel}
+                      </span>
                     </div>
                     <div className="flex flex-col rounded-lg bg-slate-50 px-2.5 py-1.5">
-                      <span className="text-[10px] uppercase tracking-wide text-slate-500">Ether</span>
-                      <span className="mt-1 text-sm font-semibold text-slate-900">{etherScore}</span>
-                      <span className="text-[10px] text-slate-500">{etherLabel(etherScore)}</span>
+                      <span className="text-[10px] uppercase tracking-wide text-slate-500">
+                        Ether
+                      </span>
+                      <span className="mt-1 text-sm font-semibold text-slate-900">
+                        {etherScore}
+                      </span>
+                      <span className="text-[10px] text-slate-500">
+                        {etherLabel(etherScore)}
+                      </span>
                     </div>
                   </div>
                 </Card>
@@ -782,50 +953,63 @@ export default function ReportPage() {
 
               <div className="mt-4 grid gap-4 md:grid-cols-3">
                 <div className="space-y-1 text-sm">
-                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Property</div>
-                  <div className="text-[13px] font-medium text-slate-900">{addressLine || "Address on file"}</div>
-                  <div className="text-[12px] text-slate-500">{cityLine || "City, State"}</div>
-                </div>
-                <div className="space-y-1 text-sm">
-                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Household</div>
-                  <div className="flex flex-wrap gap-1.5 text-[12px] text-slate-600">
-                    {property.occupants_adults !== null && (
-                      <Chip>{property.occupants_adults} adult{property.occupants_adults === 1 ? "" : "s"}</Chip>
-                    )}
-                    {property.occupants_children !== null && (
-                      <Chip>
-                        {property.occupants_children} child{property.occupants_children === 1 ? "" : "ren"}
-                      </Chip>
-                    )}
-                    {property.pets && <Chip>{property.pets}</Chip>}
-                    {!property.occupants_adults &&
-                      !property.occupants_children &&
-                      !property.pets && <span className="text-slate-400">Household details not provided.</span>}
+                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Property
+                  </div>
+                  <div className="text-[13px] font-medium text-slate-900">
+                    {addressLine || "Address on file"}
+                  </div>
+                  <div className="text-[12px] text-slate-500">
+                    {cityLine || "City, State"}
                   </div>
                 </div>
                 <div className="space-y-1 text-sm">
-                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Flags</div>
+                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Household
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 text-[12px] text-slate-600">
+                    {occupantChips.length > 0 ? (
+                      occupantChips.map((c) => <Chip key={c}>{c}</Chip>)
+                    ) : (
+                      <span className="text-slate-400">
+                        Household details not provided.
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div className="space-y-1 text-sm">
+                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Flags
+                  </div>
                   <div className="flex flex-wrap gap-1.5 text-[12px]">
                     {humidityFlag && (
                       <Chip>
-                        Humidity outside 40–60%{" "}
-                        <span className="ml-1 text-[10px] text-slate-400">(comfort + mold risk)</span>
+                        Humidity outside 40–60%
+                        <span className="ml-1 text-[10px] text-slate-400">
+                          (comfort + mold risk)
+                        </span>
                       </Chip>
                     )}
                     {M.CO2 > 1200 && (
                       <Chip>
                         Elevated CO₂ during measurement
-                        <span className="ml-1 text-[10px] text-slate-400">(ventilation recommended)</span>
+                        <span className="ml-1 text-[10px] text-slate-400">
+                          (ventilation recommended)
+                        </span>
                       </Chip>
                     )}
                     {M.PM25 > 20 && (
                       <Chip>
                         Elevated fine particles
-                        <span className="ml-1 text-[10px] text-slate-400">(filtration recommended)</span>
+                        <span className="ml-1 text-[10px] text-slate-400">
+                          (filtration recommended)
+                        </span>
                       </Chip>
                     )}
                     {!humidityFlag && M.CO2 <= 1200 && M.PM25 <= 20 && (
-                      <span className="text-[12px] text-slate-400">No significant flags at time of testing.</span>
+                      <span className="text-[12px] text-slate-400">
+                        No significant flags at time of testing.
+                      </span>
                     )}
                   </div>
                 </div>
@@ -841,21 +1025,19 @@ export default function ReportPage() {
                   Category Scores
                 </div>
                 <p className="mt-1 text-xs text-slate-500">
-                  Higher scores indicate better conditions for long-term health and comfort.
+                  Higher scores indicate better conditions for long-term health
+                  and comfort.
                 </p>
               </div>
             </div>
             <div className="grid grid-cols-3 gap-4">
-
               {/* AIR */}
               <div className="flex flex-col items-center justify-center gap-2">
-                <MetricRing
-                  percent={airScore}
-                  icon={<Wind size={22} />}
-                  size={80}
-                />
+                <MetricRing percent={airScore} icon={<Wind size={22} />} size={80} />
                 <span className="text-[11px] text-slate-500">{airLabel}</span>
-                <span className="text-[11px] text-slate-400 italic">{airSummary}</span>
+                <span className="text-[11px] text-slate-400 italic">
+                  {airSummary}
+                </span>
               </div>
 
               {/* WATER */}
@@ -866,54 +1048,64 @@ export default function ReportPage() {
                   size={80}
                 />
                 <span className="text-[11px] text-slate-500">{waterLabel}</span>
-                <span className="text-[11px] text-slate-400 italic">{waterSummary}</span>
+                <span className="text-[11px] text-slate-400 italic">
+                  {waterSummary}
+                </span>
               </div>
 
               {/* ETHER */}
               <div className="flex flex-col items-center justify-center gap-2">
-                <MetricRing
-                  percent={etherScore}
-                  icon={<Zap size={22} />}
-                  size={80}
-                />
-                <span className="text-[11px] text-slate-500">{etherLabel(etherScore)}</span>
-                <span className="text-[11px] text-slate-400 italic">{etherSummary}</span>
+                <MetricRing percent={etherScore} icon={<Zap size={22} />} size={80} />
+                <span className="text-[11px] text-slate-500">
+                  {etherLabel(etherScore)}
+                </span>
+                <span className="text-[11px] text-slate-400 italic">
+                  {etherSummary}
+                </span>
               </div>
-
             </div>
-
           </Card>
         </div>
       </Section>
 
       {/* DETAILED METRICS SECTION */}
-      <Section id="expandables" label="Detailed View" title="How your home performed by metric">
+      <Section
+        id="expandables"
+        label="Detailed View"
+        title="How your home performed by metric"
+      >
         <div className="grid gap-4 md:grid-cols-3">
           {/* AIR */}
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                  Air
-                </div>
-
-                <span className="text-slate-400">·</span>
-
-                <a
-                  href="https://www.airnow.gov/?city=Houston&state=TX&zipcode=77007"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="relative group flex items-center gap-1 text-[11px] font-medium text-blue-600 hover:text-blue-700"
-                >
-                  <span className="shadow-[0_0_2px_rgba(0,0,0,0.1)]">Local Air Risks</span>
-
-                  <Info size={13} className="text-blue-600 group-hover:text-blue-700" />
-
-                  <div className="absolute left-0 top-5 w-56 p-2 rounded-md bg-slate-900 text-white text-[11px] opacity-0 group-hover:opacity-100 transition-opacity shadow-lg z-20">
-                    Outdoor pollution, pollen, and ventilation patterns all influence indoor CO₂ and particulate levels.
-                    Click to view local environmental conditions.
-                  </div>
-                </a>
+          <div className="space-y-3">
+            <div className="flex items-center gap-2">
+              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                Air
               </div>
+
+              <span className="text-slate-400">·</span>
+
+              <a
+                href="https://www.airnow.gov/?city=Houston&state=TX&zipcode=77007"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="relative group flex items-center gap-1 text-[11px] font-medium text-blue-600 hover:text-blue-700"
+              >
+                <span className="shadow-[0_0_2px_rgba(0,0,0,0.1)]">
+                  Local Air Risks
+                </span>
+
+                <Info
+                  size={13}
+                  className="text-blue-600 group-hover:text-blue-700"
+                />
+
+                <div className="absolute left-0 top-5 z-20 w-56 rounded-md bg-slate-900 p-2 text-[11px] text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
+                  Outdoor pollution, pollen, and ventilation patterns all
+                  influence indoor CO₂ and particulate levels. Click to view
+                  local environmental conditions.
+                </div>
+              </a>
+            </div>
 
             <ExpandableCard
               title="CO₂ (Carbon Dioxide)"
@@ -923,27 +1115,37 @@ export default function ReportPage() {
               defaultOpen
             >
               <p>
-                Your snapshot reading was{" "}
-                <span className="font-semibold text-slate-900">{M.CO2?.toFixed(0) ?? "—"} ppm</span>.{" "}
-                <span className="font-medium text-slate-800">{co2Status}.</span>
+                Your snapshot reading (worst room) was{" "}
+                <span className="font-semibold text-slate-900">
+                  {M.CO2?.toFixed(0) ?? "—"} ppm
+                </span>
+                .{" "}
+                <span className="font-medium text-slate-800">
+                  {co2Status}.
+                </span>
               </p>
               <ul className="mt-2 list-disc space-y-1 pl-4 text-sm">
                 <li>
-                  <strong>{"≤ 700 ppm"}</strong> is considered fresh, outdoor-like air where most people feel sharp and
-                  clear.
+                  <strong>{"≤ 700 ppm"}</strong> is considered fresh,
+                  outdoor-like air where most people feel sharp and clear.
                 </li>
                 <li>
-                  <strong>700–1000 ppm</strong> is typical of occupied indoor spaces with decent ventilation.
+                  <strong>700–1000 ppm</strong> is typical of occupied indoor
+                  spaces with decent ventilation.
                 </li>
                 <li>
-                  <strong>Above ~1200 ppm</strong>, people often report stuffiness, fatigue, and reduced focus.
+                  <strong>Above ~1200 ppm</strong>, people often report
+                  stuffiness, fatigue, and reduced focus.
                 </li>
               </ul>
               <p className="mt-2 text-sm text-slate-700">
-                Sustained CO₂ above 1500–2000 ppm can impair complex thinking and make spaces feel oppressive. The goal
-                is to keep your daily peaks closer to{" "}
-                <span className="font-medium text-slate-900">{HOUSTON_REFERENCES.co2Benchmark} ppm</span> or below
-                during active use.
+                Sustained CO₂ above 1500–2000 ppm can impair complex thinking
+                and make spaces feel oppressive. The goal is to keep your daily
+                peaks closer to{" "}
+                <span className="font-medium text-slate-900">
+                  {HOUSTON_REFERENCES.co2Benchmark} ppm
+                </span>{" "}
+                or below during active use.
               </p>
             </ExpandableCard>
 
@@ -954,28 +1156,38 @@ export default function ReportPage() {
               statusLabel={pm25Status}
             >
               <p>
-                Your PM₂.₅ reading was{" "}
+                Your PM₂.₅ reading (worst room) was{" "}
                 <span className="font-semibold text-slate-900">
                   {M.PM25 ? `${M.PM25.toFixed(1)} µg/m³` : "—"}
                 </span>
-                . <span className="font-medium text-slate-800">{pm25Status} overall.</span>
+                .{" "}
+                <span className="font-medium text-slate-800">
+                  {pm25Status} overall.
+                </span>
               </p>
               <ul className="mt-2 list-disc space-y-1 pl-4 text-sm">
                 <li>
-                  <strong>0–9 µg/m³</strong>: excellent, aligned with the latest WHO annual guideline.
+                  <strong>0–9 µg/m³</strong>: excellent, aligned with the
+                  latest WHO annual guideline.
                 </li>
                 <li>
-                  <strong>9–20 µg/m³</strong>: moderate; common in traffic-exposed or cooking-heavy spaces.
+                  <strong>9–20 µg/m³</strong>: moderate; common in
+                  traffic-exposed or cooking-heavy spaces.
                 </li>
                 <li>
-                  <strong>{" > 20 µg/m³"}</strong>: elevated; long-term exposure is associated with respiratory and
-                  cardiovascular risk.
+                  <strong>{" > 20 µg/m³"}</strong>: elevated; long-term
+                  exposure is associated with respiratory and cardiovascular
+                  risk.
                 </li>
               </ul>
               <p className="mt-2 text-sm text-slate-700">
-                Sources include cooking, candles, outdoor pollution, and poorly filtered HVAC. We generally recommend
-                kitchen exhaust use and a HEPA-grade purifier if levels are regularly above{" "}
-                <span className="font-medium text-slate-900">10–15 µg/m³</span>.
+                Sources include cooking, candles, outdoor pollution, and poorly
+                filtered HVAC. We generally recommend kitchen exhaust use and a
+                HEPA-grade purifier if levels are regularly above{" "}
+                <span className="font-medium text-slate-900">
+                  10–15 µg/m³
+                </span>
+                .
               </p>
             </ExpandableCard>
 
@@ -986,28 +1198,31 @@ export default function ReportPage() {
               statusLabel={pm10Status}
             >
               <p>
-                Your PM₁₀ reading was{" "}
+                Your PM₁₀ reading (worst room) was{" "}
                 <span className="font-semibold text-slate-900">
                   {M.PM10 ? `${M.PM10.toFixed(1)} µg/m³` : "—"}
                 </span>
-                . <span className="font-medium text-slate-800">{pm10Status} overall.</span>
+                .{" "}
+                <span className="font-medium text-slate-800">
+                  {pm10Status} overall.
+                </span>
               </p>
               <ul className="mt-2 list-disc space-y-1 pl-4 text-sm">
                 <li>
                   <strong>≤ 30 µg/m³</strong>: excellent for an indoor setting.
                 </li>
                 <li>
-                  <strong>30–50 µg/m³</strong>: moderate; expect more visible dust and potential irritation for
-                  sensitive individuals.
+                  <strong>30–50 µg/m³</strong>: moderate; expect more visible
+                  dust and potential irritation for sensitive individuals.
                 </li>
                 <li>
-                  <strong>{"> 50 µg/m³"}</strong>: high; often seen in dusty, high-traffic, or renovation-adjacent
-                  areas.
+                  <strong>{"> 50 µg/m³"}</strong>: high; often seen in dusty,
+                  high-traffic, or renovation-adjacent areas.
                 </li>
               </ul>
               <p className="mt-2 text-sm text-slate-700">
-                Elevated PM₁₀ can be a sign of resuspended dust, open windows near busy roads, or inadequate filtration
-                on your HVAC system.
+                Elevated PM₁₀ can be a sign of resuspended dust, open windows
+                near busy roads, or inadequate filtration on your HVAC system.
               </p>
             </ExpandableCard>
 
@@ -1016,11 +1231,16 @@ export default function ReportPage() {
               subtitle="Comfort envelope and mold risk factors."
               score={metricScores.Humidity}
               statusLabel={
-                humidityFlag ? "Outside optimal range" : metricScores.Humidity >= 80 ? "Comfortable" : "Monitor"
+                humidityFlag
+                  ? "Outside optimal range"
+                  : metricScores.Humidity >= 80
+                  ? "Comfortable"
+                  : "Monitor"
               }
             >
               <p>
-                At the time of testing, indoor temperature was{" "}
+                At the time of testing (worst-room snapshot), indoor temperature
+                was{" "}
                 <span className="font-semibold text-slate-900">
                   {M.Temp ? `${M.Temp.toFixed(1)} °F` : "—"}
                 </span>{" "}
@@ -1032,19 +1252,22 @@ export default function ReportPage() {
               </p>
               <ul className="mt-2 list-disc space-y-1 pl-4 text-sm">
                 <li>
-                  <strong>40–60% humidity</strong> is typically best for comfort, respiratory health, and mold
-                  prevention.
+                  <strong>40–60% humidity</strong> is typically best for
+                  comfort, respiratory health, and mold prevention.
                 </li>
                 <li>
-                  Below <strong>40%</strong>, air can feel dry and irritating to the eyes and airways.
+                  Below <strong>40%</strong>, air can feel dry and irritating
+                  to the eyes and airways.
                 </li>
                 <li>
-                  Above <strong>60%</strong>, the risk of dust mites and mold growth increases over time.
+                  Above <strong>60%</strong>, the risk of dust mites and mold
+                  growth increases over time.
                 </li>
               </ul>
               <p className="mt-2 text-sm text-slate-700">
-                We look at humidity in context with your building envelope, HVAC settings, and local climate to balance
-                comfort with long-term durability.
+                We look at humidity in context with your building envelope, HVAC
+                settings, and local climate to balance comfort with long-term
+                durability.
               </p>
             </ExpandableCard>
           </div>
@@ -1064,13 +1287,20 @@ export default function ReportPage() {
                 rel="noopener noreferrer"
                 className="relative group flex items-center gap-1 text-[11px] font-medium text-blue-600 hover:text-blue-700"
               >
-                <span className="shadow-[0_0_2px_rgba(0,0,0,0.1)]">Local Water Risks</span>
+                <span className="shadow-[0_0_2px_rgba(0,0,0,0.1)]">
+                  Local Water Risks
+                </span>
 
-                <Info size={13} className="text-blue-600 group-hover:text-blue-700" />
+                <Info
+                  size={13}
+                  className="text-blue-600 group-hover:text-blue-700"
+                />
 
-                <div className="absolute left-0 top-5 w-56 p-2 rounded-md bg-slate-900 text-white text-[11px] opacity-0 group-hover:opacity-100 transition-opacity shadow-lg z-20">
-                  Municipal water varies by source, treatment method, and distribution system age. Learn the key factors
-                  that influence chlorine levels, minerals, taste, and potential contaminants in Houston’s network.
+                <div className="absolute left-0 top-5 z-20 w-56 rounded-md bg-slate-900 p-2 text-[11px] text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
+                  Municipal water varies by source, treatment method, and
+                  distribution system age. Learn the key factors that influence
+                  chlorine levels, minerals, taste, and potential contaminants
+                  in Houston’s network.
                 </div>
               </a>
             </div>
@@ -1091,24 +1321,30 @@ export default function ReportPage() {
               defaultOpen
             >
               <p>
-                Your TDS reading was{" "}
-                <span className="font-semibold text-slate-900">{M.TDS ? `${M.TDS.toFixed(0)} ppm` : "—"}</span>.
+                Your TDS reading (worst tap) was{" "}
+                <span className="font-semibold text-slate-900">
+                  {M.TDS ? `${M.TDS.toFixed(0)} ppm` : "—"}
+                </span>
+                .
               </p>
               <ul className="mt-2 list-disc space-y-1 pl-4 text-sm">
                 <li>
-                  <strong>{"< 150 ppm"}</strong>: very low mineral content, similar to many filtration systems.
+                  <strong>{"< 150 ppm"}</strong>: very low mineral content,
+                  similar to many filtration systems.
                 </li>
                 <li>
                   <strong>150–300 ppm</strong>: typical for municipal tap water.
                 </li>
                 <li>
-                  <strong>{"> 300 ppm"}</strong>: higher mineral load; may impact taste, scaling, and appliance life.
+                  <strong>{"> 300 ppm"}</strong>: higher mineral load; may
+                  impact taste, scaling, and appliance life.
                 </li>
               </ul>
               <p className="mt-2 text-sm text-slate-700">
-                TDS doesn&apos;t specify exactly what&apos;s present, but it&apos;s a valuable screening metric. For
-                elevated readings, we often recommend point-of-use filtration with carbon + sediment stages, and in some
-                cases reverse osmosis.
+                TDS doesn&apos;t specify exactly what&apos;s present, but it&apos;s
+                a valuable screening metric. For elevated readings, we often
+                recommend point-of-use filtration with carbon + sediment stages,
+                and in some cases reverse osmosis.
               </p>
             </ExpandableCard>
 
@@ -1116,22 +1352,35 @@ export default function ReportPage() {
               title="Chlorine"
               subtitle="Disinfection byproduct with taste and respiratory impact."
               score={metricScores.Cl}
-              statusLabel={M.Cl <= 0.5 ? "Low" : M.Cl <= 1.5 ? "Typical municipal" : M.Cl <= 3 ? "High" : "Very high"}
+              statusLabel={
+                M.Cl <= 0.5
+                  ? "Low"
+                  : M.Cl <= 1.5
+                  ? "Typical municipal"
+                  : M.Cl <= 3
+                  ? "High"
+                  : "Very high"
+              }
             >
               <p>
-                Your chlorine level was{" "}
-                <span className="font-semibold text-slate-900">{M.Cl ? `${M.Cl.toFixed(2)} ppm` : "—"}</span>.
+                Your chlorine level (worst tap) was{" "}
+                <span className="font-semibold text-slate-900">
+                  {M.Cl ? `${M.Cl.toFixed(2)} ppm` : "—"}
+                </span>
+                .
               </p>
               <ul className="mt-2 list-disc space-y-1 pl-4 text-sm">
                 <li>
                   <strong>0.2–1.0 ppm</strong> is common for municipal systems.
                 </li>
                 <li>
-                  Elevated chlorine can dry skin and hair and aggravate sensitive airways, especially during showering.
+                  Elevated chlorine can dry skin and hair and aggravate
+                  sensitive airways, especially during showering.
                 </li>
               </ul>
               <p className="mt-2 text-sm text-slate-700">
-                Carbon filtration is highly effective at reducing chlorine, improving both taste and shower experience.
+                Carbon filtration is highly effective at reducing chlorine,
+                improving both taste and shower experience.
               </p>
             </ExpandableCard>
 
@@ -1140,25 +1389,34 @@ export default function ReportPage() {
               subtitle="Acid/alkaline balance of your tap water."
               score={metricScores.pH}
               statusLabel={
-                M.pH >= 6.5 && M.pH <= 8.5 ? "Ideal range" : M.pH ? "Outside recommended range" : "Not measured"
+                M.pH >= 6.5 && M.pH <= 8.5
+                  ? "Ideal range"
+                  : M.pH
+                  ? "Outside recommended range"
+                  : "Not measured"
               }
             >
               <p>
-                Your measured pH was{" "}
-                <span className="font-semibold text-slate-900">{M.pH ? M.pH.toFixed(2) : "—"}</span>.
+                Your measured pH (worst tap) was{" "}
+                <span className="font-semibold text-slate-900">
+                  {M.pH ? M.pH.toFixed(2) : "—"}
+                </span>
+                .
               </p>
               <ul className="mt-2 list-disc space-y-1 pl-4 text-sm">
                 <li>
-                  <strong>6.5–8.5</strong> is generally considered acceptable for drinking water from a corrosivity and
-                  taste perspective.
+                  <strong>6.5–8.5</strong> is generally considered acceptable
+                  for drinking water from a corrosivity and taste perspective.
                 </li>
                 <li>
-                  Significantly low pH can contribute to pipe corrosion; very high pH can cause scaling and off taste.
+                  Significantly low pH can contribute to pipe corrosion; very
+                  high pH can cause scaling and off taste.
                 </li>
               </ul>
               <p className="mt-2 text-sm text-slate-700">
-                pH is interpreted alongside TDS, hardness, and plumbing materials to decide whether treatment or
-                corrosion control is appropriate.
+                pH is interpreted alongside TDS, hardness, and plumbing
+                materials to decide whether treatment or corrosion control is
+                appropriate.
               </p>
             </ExpandableCard>
           </div>
@@ -1178,12 +1436,20 @@ export default function ReportPage() {
                 rel="noopener noreferrer"
                 className="relative group flex items-center gap-1 text-[11px] font-medium text-blue-600 hover:text-blue-700"
               >
-                <span className="shadow-[0_0_2px_rgba(0,0,0,0.1)]">Local EMF Context</span>
+                <span className="shadow-[0_0_2px_rgba(0,0,0,0.1)]">
+                  Local EMF Context
+                </span>
 
-                <Info size={13} className="text-blue-600 group-hover:text-blue-700" />
+                <Info
+                  size={13}
+                  className="text-blue-600 group-hover:text-blue-700"
+                />
 
-                <div className="absolute left-0 top-5 w-56 p-2 rounded-md bg-slate-900 text-white text-[11px] opacity-0 group-hover:opacity-100 transition-opacity shadow-lg z-20">
-                  Nearby cell towers, building wiring patterns, and power infrastructure all contribute to background EMF exposure. Click to view the electromagnetic environment around your home.
+                <div className="absolute left-0 top-5 z-20 w-56 rounded-md bg-slate-900 p-2 text-[11px] text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
+                  Nearby cell towers, building wiring patterns, and power
+                  infrastructure all contribute to background EMF exposure.
+                  Click to view the electromagnetic environment around your
+                  home.
                 </div>
               </a>
             </div>
@@ -1193,20 +1459,27 @@ export default function ReportPage() {
               subtitle="Extremely low frequency fields from wiring and large appliances."
               score={metricScores.MagField}
               statusLabel={
-                M.MagField <= 1 ? "Very low" : M.MagField <= 2 ? "Low" : M.MagField <= 4 ? "Moderate" : "Elevated"
+                M.MagField <= 1
+                  ? "Very low"
+                  : M.MagField <= 2
+                  ? "Low"
+                  : M.MagField <= 4
+                  ? "Moderate"
+                  : "Elevated"
               }
               defaultOpen
             >
               <p>
-                Snapshot magnetic field was{" "}
+                Snapshot magnetic field (worst spot) was{" "}
                 <span className="font-semibold text-slate-900">
                   {M.MagField ? `${M.MagField.toFixed(2)} mG` : "—"}
                 </span>
                 .
               </p>
               <p className="mt-2 text-sm text-slate-700">
-                While there are no universally accepted residential limits, many precautionary guidelines aim to keep
-                long-term sleeping areas below about <strong>1–2 mG</strong> when feasible.
+                While there are no universally accepted residential limits,
+                many precautionary guidelines aim to keep long-term sleeping
+                areas below about <strong>1–2 mG</strong> when feasible.
               </p>
             </ExpandableCard>
 
@@ -1225,15 +1498,18 @@ export default function ReportPage() {
               }
             >
               <p>
-                Electric field at the time of testing was{" "}
+                Electric field at the time of testing (worst spot) was{" "}
                 <span className="font-semibold text-slate-900">
-                  {M.ElectricField ? `${M.ElectricField.toFixed(2)} V/m` : "—"}
+                  {M.ElectricField
+                    ? `${M.ElectricField.toFixed(2)} V/m`
+                    : "—"}
                 </span>
                 .
               </p>
               <p className="mt-2 text-sm text-slate-700">
-                We focus most remediation on sleeping areas and high-use workspaces, using distance, wiring
-                optimization, and device placement adjustments.
+                We focus most remediation on sleeping areas and high-use
+                workspaces, using distance, wiring optimization, and device
+                placement adjustments.
               </p>
             </ExpandableCard>
 
@@ -1241,21 +1517,210 @@ export default function ReportPage() {
               title="Radiofrequency (RF)"
               subtitle="Wireless signals from Wi-Fi, phones, and nearby infrastructure."
               score={metricScores.RF}
-              statusLabel={M.RF <= 0.05 ? "Very low" : M.RF <= 0.1 ? "Low" : M.RF <= 1 ? "Moderate" : "Elevated"}
+              statusLabel={
+                M.RF <= 0.05
+                  ? "Very low"
+                  : M.RF <= 0.1
+                  ? "Low"
+                  : M.RF <= 1
+                  ? "Moderate"
+                  : "Elevated"
+              }
             >
               <p>
-                RF power density snapshot was{" "}
+                RF power density snapshot (worst spot) was{" "}
                 <span className="font-semibold text-slate-900">
                   {M.RF ? `${M.RF.toFixed(3)} mW/m²` : "—"}
                 </span>
                 .
               </p>
               <p className="mt-2 text-sm text-slate-700">
-                we interpret RF in context: proximity to routers and devices, sleep locations, and your sensitivity
-                profile. When requested, we prioritize reducing nighttime and long-duration exposures.
+                We interpret RF in context: proximity to routers and devices,
+                sleep locations, and your sensitivity profile. When requested,
+                we prioritize reducing nighttime and long-duration exposures.
               </p>
             </ExpandableCard>
           </div>
+        </div>
+      </Section>
+
+      {/* ROOM-BY-ROOM ANALYSIS SECTION */}
+      <Section
+        id="rooms"
+        label="Room-by-room Analysis"
+        title="Where issues are showing up in your home"
+      >
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {rooms.map((room) => {
+            const roomMs = measurementsByRoom[room.id] || [];
+            const categories = new Set<CategoryKey>();
+
+            roomMs.forEach((m) => {
+              if (m.category) {
+                const lower = m.category.toLowerCase();
+                if (lower === "air" || lower === "water" || lower === "ether") {
+                  categories.add(lower as CategoryKey);
+                }
+              } else {
+                const key = m.metric as MetricKey;
+                categories.add(getCategoryFromMetric(key));
+              }
+            });
+
+            const hasData = roomMs.length > 0;
+
+            return (
+              <Card key={room.id} className="relative overflow-hidden">
+                <div className="mb-2 flex items-center gap-3">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-900/90 text-sm">
+                    {roomIcon(room)}
+                  </div>
+                  <div>
+                    <div className="text-sm font-semibold text-slate-900">
+                      {room.name}
+                    </div>
+                    <div className="text-[11px] text-slate-500">
+                      Room-by-room snapshot
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mb-2 flex flex-wrap gap-1.5 text-[10px] text-slate-600">
+                  {categories.has("air") && <Chip>Air metrics</Chip>}
+                  {categories.has("water") && <Chip>Water metrics</Chip>}
+                  {categories.has("ether") && <Chip>Ether metrics</Chip>}
+                  {!hasData && (
+                    <span className="text-[11px] text-slate-400">
+                      No measurements captured yet.
+                    </span>
+                  )}
+                </div>
+
+                {hasData && (
+                  <div className="mt-2 overflow-hidden rounded-lg border border-slate-200 bg-slate-50/60">
+                    <table className="min-w-full border-collapse text-[11px]">
+                      <thead>
+                        <tr className="bg-slate-100 text-left text-[10px] text-slate-500">
+                          <th className="border-b border-slate-200 px-2 py-1">
+                            Metric
+                          </th>
+                          <th className="border-b border-slate-200 px-2 py-1">
+                            Value
+                          </th>
+                          <th className="border-b border-slate-200 px-2 py-1">
+                            Unit
+                          </th>
+                          <th className="border-b border-slate-200 px-2 py-1">
+                            Time
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {roomMs.map((m) => {
+                          const t = m.taken_at || m.created_at;
+                          const timeLabel = t
+                            ? new Date(t).toLocaleTimeString([], {
+                                hour: "numeric",
+                                minute: "2-digit",
+                              })
+                            : "—";
+
+                          const label = prettyMetricLabel(m.metric);
+
+                          return (
+                            <tr key={m.id} className="bg-white odd:bg-slate-50/80">
+                              <td className="border-b border-slate-100 px-2 py-1">
+                                {label}
+                              </td>
+                              <td className="border-b border-slate-100 px-2 py-1">
+                                {m.value}
+                              </td>
+                              <td className="border-b border-slate-100 px-2 py-1">
+                                {m.unit || "—"}
+                              </td>
+                              <td className="border-b border-slate-100 px-2 py-1 text-[10px] text-slate-500">
+                                {timeLabel}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </Card>
+            );
+          })}
+
+          {/* Unassigned / legacy measurements */}
+          {unassignedMeasurements.length > 0 && (
+            <Card className="relative overflow-hidden">
+              <div className="mb-2 flex items-center gap-3">
+                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-900/90 text-sm">
+                  🏠
+                </div>
+                <div>
+                  <div className="text-sm font-semibold text-slate-900">
+                    Whole-home / Unassigned
+                  </div>
+                  <div className="text-[11px] text-slate-500">
+                    Measurements not tied to a specific room.
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-2 overflow-hidden rounded-lg border border-slate-200 bg-slate-50/60">
+                <table className="min-w-full border-collapse text-[11px]">
+                  <thead>
+                    <tr className="bg-slate-100 text-left text-[10px] text-slate-500">
+                      <th className="border-b border-slate-200 px-2 py-1">
+                        Metric
+                      </th>
+                      <th className="border-b border-slate-200 px-2 py-1">
+                        Value
+                      </th>
+                      <th className="border-b border-slate-200 px-2 py-1">
+                        Unit
+                      </th>
+                      <th className="border-b border-slate-200 px-2 py-1">
+                        Time
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {unassignedMeasurements.map((m) => {
+                      const t = m.taken_at || m.created_at;
+                      const timeLabel = t
+                        ? new Date(t).toLocaleTimeString([], {
+                            hour: "numeric",
+                            minute: "2-digit",
+                          })
+                        : "—";
+
+                      const label = prettyMetricLabel(m.metric);
+
+                      return (
+                        <tr key={m.id} className="bg-white odd:bg-slate-50/80">
+                          <td className="border-b border-slate-100 px-2 py-1">
+                            {label}
+                          </td>
+                          <td className="border-b border-slate-100 px-2 py-1">
+                            {m.value}
+                          </td>
+                          <td className="border-b border-slate-100 px-2 py-1">
+                            {m.unit || "—"}
+                          </td>
+                          <td className="border-b border-slate-100 px-2 py-1 text-[10px] text-slate-500">
+                            {timeLabel}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          )}
         </div>
       </Section>
 
@@ -1266,8 +1731,12 @@ export default function ReportPage() {
           <Card>
             <div className="mb-3 flex items-center justify-between">
               <div>
-                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">PM₂.₅</div>
-                <p className="text-xs text-slate-500">Fine particulate comparison.</p>
+                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                  PM₂.₅
+                </div>
+                <p className="text-xs text-slate-500">
+                  Fine particulate comparison.
+                </p>
               </div>
               <div className="text-xs text-slate-500">
                 Your reading:{" "}
@@ -1278,10 +1747,26 @@ export default function ReportPage() {
             </div>
             <div className="h-48">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={pm25Compare} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                  <XAxis dataKey="name" tick={{ fontSize: 11 }} tickLine={false} axisLine={{ stroke: "#e2e8f0" }} />
-                  <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={{ stroke: "#e2e8f0" }} />
+                <BarChart
+                  data={pm25Compare}
+                  margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
+                >
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    vertical={false}
+                    stroke="#e2e8f0"
+                  />
+                  <XAxis
+                    dataKey="name"
+                    tick={{ fontSize: 11 }}
+                    tickLine={false}
+                    axisLine={{ stroke: "#e2e8f0" }}
+                  />
+                  <YAxis
+                    tick={{ fontSize: 11 }}
+                    tickLine={false}
+                    axisLine={{ stroke: "#e2e8f0" }}
+                  />
                   <Tooltip content={<CustomTooltip unit="µg/m³" />} />
                   <ReferenceLine
                     y={HOUSTON_REFERENCES.pm25Benchmark}
@@ -1308,8 +1793,12 @@ export default function ReportPage() {
           <Card>
             <div className="mb-3 flex items-center justify-between">
               <div>
-                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">PM₁₀</div>
-                <p className="text-xs text-slate-500">Coarse particulate comparison.</p>
+                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                  PM₁₀
+                </div>
+                <p className="text-xs text-slate-500">
+                  Coarse particulate comparison.
+                </p>
               </div>
               <div className="text-xs text-slate-500">
                 Your reading:{" "}
@@ -1320,10 +1809,26 @@ export default function ReportPage() {
             </div>
             <div className="h-48">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={pm10Compare} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                  <XAxis dataKey="name" tick={{ fontSize: 11 }} tickLine={false} axisLine={{ stroke: "#e2e8f0" }} />
-                  <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={{ stroke: "#e2e8f0" }} />
+                <BarChart
+                  data={pm10Compare}
+                  margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
+                >
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    vertical={false}
+                    stroke="#e2e8f0"
+                  />
+                  <XAxis
+                    dataKey="name"
+                    tick={{ fontSize: 11 }}
+                    tickLine={false}
+                    axisLine={{ stroke: "#e2e8f0" }}
+                  />
+                  <YAxis
+                    tick={{ fontSize: 11 }}
+                    tickLine={false}
+                    axisLine={{ stroke: "#e2e8f0" }}
+                  />
                   <Tooltip content={<CustomTooltip unit="µg/m³" />} />
                   <ReferenceLine
                     y={HOUSTON_REFERENCES.pm10Benchmark}
@@ -1350,20 +1855,42 @@ export default function ReportPage() {
           <Card>
             <div className="mb-3 flex items-center justify-between">
               <div>
-                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">CO₂</div>
-                <p className="text-xs text-slate-500">Indoor CO₂ vs. typical conditions.</p>
+                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
+                  CO₂
+                </div>
+                <p className="text-xs text-slate-500">
+                  Indoor CO₂ vs. typical conditions.
+                </p>
               </div>
               <div className="text-xs text-slate-500">
                 Your reading:{" "}
-                <span className="font-semibold text-slate-900">{M.CO2 ? `${M.CO2.toFixed(0)} ppm` : "—"}</span>
+                <span className="font-semibold text-slate-900">
+                  {M.CO2 ? `${M.CO2.toFixed(0)} ppm` : "—"}
+                </span>
               </div>
             </div>
             <div className="h-48">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={co2Compare} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                  <XAxis dataKey="name" tick={{ fontSize: 11 }} tickLine={false} axisLine={{ stroke: "#e2e8f0" }} />
-                  <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={{ stroke: "#e2e8f0" }} />
+                <BarChart
+                  data={co2Compare}
+                  margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
+                >
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    vertical={false}
+                    stroke="#e2e8f0"
+                  />
+                  <XAxis
+                    dataKey="name"
+                    tick={{ fontSize: 11 }}
+                    tickLine={false}
+                    axisLine={{ stroke: "#e2e8f0" }}
+                  />
+                  <YAxis
+                    tick={{ fontSize: 11 }}
+                    tickLine={false}
+                    axisLine={{ stroke: "#e2e8f0" }}
+                  />
                   <Tooltip content={<CustomTooltip unit="ppm" />} />
                   <ReferenceLine
                     y={HOUSTON_REFERENCES.co2Benchmark}
@@ -1406,68 +1933,86 @@ export default function ReportPage() {
 
             <ol className="mt-3 space-y-3 text-sm text-slate-700">
               <li>
-                <div className="font-semibold text-slate-900">1. Stabilize daily air quality</div>
+                <div className="font-semibold text-slate-900">
+                  1. Stabilize daily air quality
+                </div>
                 <p className="mt-1">
-                  Focus first on the rooms where your household spends the most time: bedrooms, living room, and home
-                  office (if applicable). Based on your current readings, we recommend:
+                  Focus first on the rooms where your household spends the most
+                  time: bedrooms, living room, and home office (if applicable).
+                  Based on your current readings, we recommend:
                 </p>
                 <ul className="mt-1 list-disc space-y-1 pl-4">
                   <li>
-                    Run a <strong>HEPA purifier</strong> in the bedroom overnight and living area during use.
+                    Run a <strong>HEPA purifier</strong> in the bedroom
+                    overnight and living area during use.
                   </li>
                   <li>
-                    Use your kitchen exhaust fan whenever cooking, especially when searing or using gas.
+                    Use your kitchen exhaust fan whenever cooking, especially
+                    when searing or using gas.
                   </li>
                   <li>
-                    Periodically open windows or use mechanical ventilation when outdoor air quality is good.
+                    Periodically open windows or use mechanical ventilation when
+                    outdoor air quality is good.
                   </li>
                 </ul>
               </li>
 
               <li>
-                <div className="font-semibold text-slate-900">2. Tighten up water quality at points of use</div>
+                <div className="font-semibold text-slate-900">
+                  2. Tighten up water quality at points of use
+                </div>
                 <p className="mt-1">
-                  Even when municipal water is &quot;in spec,&quot; many households prefer to reduce TDS and chlorine
-                  for taste and skin comfort. For this home, the highest-impact upgrades would be:
+                  Even when municipal water is &quot;in spec,&quot; many
+                  households prefer to reduce TDS and chlorine for taste and
+                  skin comfort. For this home, the highest-impact upgrades would
+                  be:
                 </p>
                 <ul className="mt-1 list-disc space-y-1 pl-4">
                   <li>
-                    Install a <strong>point-of-use carbon filter</strong> on the primary drinking/cooking tap.
+                    Install a <strong>point-of-use carbon filter</strong> on the
+                    primary drinking/cooking tap.
                   </li>
                   <li>
-                    Consider a <strong>shower filter</strong> for the most frequently used bathroom to reduce chlorine
-                    exposure.
+                    Consider a <strong>shower filter</strong> for the most
+                    frequently used bathroom to reduce chlorine exposure.
                   </li>
                 </ul>
               </li>
 
               <li>
-                <div className="font-semibold text-slate-900">3. Optimize &quot;Ether&quot; around sleep and focus</div>
+                <div className="font-semibold text-slate-900">
+                  3. Optimize &quot;Ether&quot; around sleep and focus
+                </div>
                 <p className="mt-1">
-                  We prioritize EMF/Ether improvements where your body is in one place for long periods: beds and
-                  desks. For this home, we recommend:
+                  We prioritize EMF/Ether improvements where your body is in one
+                  place for long periods: beds and desks. For this home, we
+                  recommend:
                 </p>
                 <ul className="mt-1 list-disc space-y-1 pl-4">
                   <li>
-                    Move routers, cordless bases, and large electronics at least <strong>6–8 feet</strong> away from
-                    beds where feasible.
+                    Move routers, cordless bases, and large electronics at least{" "}
+                    <strong>6–8 feet</strong> away from beds where feasible.
                   </li>
                   <li>
-                    Use &quot;airplane mode&quot; or a dedicated charging spot outside the bedroom overnight.
+                    Use &quot;airplane mode&quot; or a dedicated charging spot
+                    outside the bedroom overnight.
                   </li>
                   <li>
-                    Route power strips and chargers away from the head of the bed to reduce ELF electric and magnetic
-                    fields.
+                    Route power strips and chargers away from the head of the
+                    bed to reduce ELF electric and magnetic fields.
                   </li>
                 </ul>
               </li>
 
               <li>
-                <div className="font-semibold text-slate-900">4. Re-test after changes</div>
+                <div className="font-semibold text-slate-900">
+                  4. Re-test after changes
+                </div>
                 <p className="mt-1">
-                  After implementing your top 1–3 changes, we recommend a follow-up measurement session to confirm the
-                  impact—especially for CO₂, PM₂.₅, and humidity. This also helps fine-tune any remaining issues rather
-                  than overcorrecting.
+                  After implementing your top 1–3 changes, we recommend a
+                  follow-up measurement session to confirm the impact—especially
+                  for CO₂, PM₂.₅, and humidity. This also helps fine-tune any
+                  remaining issues rather than overcorrecting.
                 </p>
               </li>
             </ol>
@@ -1480,7 +2025,9 @@ export default function ReportPage() {
                 <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
                   Quick Actions
                 </div>
-                <h3 className="mt-1 text-sm font-semibold text-slate-900">High-value moves in the next 30 days</h3>
+                <h3 className="mt-1 text-sm font-semibold text-slate-900">
+                  High-value moves in the next 30 days
+                </h3>
               </div>
             </div>
             <ul className="space-y-2 text-sm text-slate-700">
@@ -1489,8 +2036,8 @@ export default function ReportPage() {
                   1
                 </span>
                 <span>
-                  Add a <strong>HEPA-grade air purifier</strong> to the most-used bedroom, and run it nightly on low or
-                  medium.
+                  Add a <strong>HEPA-grade air purifier</strong> to the
+                  most-used bedroom, and run it nightly on low or medium.
                 </span>
               </li>
               <li className="flex gap-2">
@@ -1498,8 +2045,8 @@ export default function ReportPage() {
                   2
                 </span>
                 <span>
-                  Use <strong>kitchen exhaust</strong> every time you cook, especially for searing, roasting, or high
-                  heat.
+                  Use <strong>kitchen exhaust</strong> every time you cook,
+                  especially for searing, roasting, or high heat.
                 </span>
               </li>
               <li className="flex gap-2">
@@ -1507,8 +2054,8 @@ export default function ReportPage() {
                   3
                 </span>
                 <span>
-                  Install a <strong>carbon block filter</strong> on the main drinking tap to reduce chlorine and
-                  off-flavors.
+                  Install a <strong>carbon block filter</strong> on the main
+                  drinking tap to reduce chlorine and off-flavors.
                 </span>
               </li>
               <li className="flex gap-2">
@@ -1516,8 +2063,8 @@ export default function ReportPage() {
                   4
                 </span>
                 <span>
-                  Move <strong>Wi-Fi routers</strong> and always-on electronics away from beds and work chairs when
-                  practical.
+                  Move <strong>Wi-Fi routers</strong> and always-on electronics
+                  away from beds and work chairs when practical.
                 </span>
               </li>
               <li className="flex gap-2">
@@ -1525,8 +2072,9 @@ export default function ReportPage() {
                   5
                 </span>
                 <span>
-                  Set a simple habit: <strong>10 minutes of fresh air</strong> (open windows or use ventilation) after
-                  cooking or gatherings.
+                  Set a simple habit:{" "}
+                  <strong>10 minutes of fresh air</strong> (open windows or use
+                  ventilation) after cooking or gatherings.
                 </span>
               </li>
             </ul>
@@ -1538,13 +2086,19 @@ export default function ReportPage() {
       <footer className="border-t border-slate-200 bg-white">
         <div className="mx-auto max-w-6xl px-4 py-8 text-sm text-slate-500">
           <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
-            <p>© {new Date().getFullYear()} Sanctuary Solutions™ · Home Health Engineers</p>
+            <p>
+              © {new Date().getFullYear()} Sanctuary Solutions™ · Home Health
+              Engineers
+            </p>
             <div className="flex flex-wrap items-center gap-3">
               <a href="#snapshot" className="hover:text-slate-700">
                 Snapshot
               </a>
               <a href="#expandables" className="hover:text-slate-700">
                 Metrics
+              </a>
+              <a href="#rooms" className="hover:text-slate-700">
+                Rooms
               </a>
               <a href="#compare" className="hover:text-slate-700">
                 Compare
