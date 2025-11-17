@@ -1032,34 +1032,49 @@ export default function ReportPage() {
             </div>
             <div className="grid grid-cols-3 gap-4">
               {/* AIR */}
-              <div className="flex flex-col items-center justify-center gap-2">
-                <MetricRing percent={airScore} icon={<Wind size={22} />} size={80} />
+              <div className="flex flex-col items-center gap-2 pt-2">
+                {/* Fixed-height ring wrapper ensures alignment */}
+                <div className="h-[110px] flex items-start justify-center">
+                  <MetricRing
+                    percent={airScore}
+                    icon={<Wind size={22} />}
+                    size={80}
+                  />
+                </div>
                 <span className="text-[11px] text-slate-500">{airLabel}</span>
-                <span className="text-[11px] text-slate-400 italic">
+                <span className="text-[11px] text-slate-400 italic text-center">
                   {airSummary}
                 </span>
               </div>
 
               {/* WATER */}
-              <div className="flex flex-col items-center justify-center gap-2">
-                <MetricRing
-                  percent={waterScore}
-                  icon={<Droplet size={22} />}
-                  size={80}
-                />
+              <div className="flex flex-col items-center gap-2 pt-2">
+                <div className="h-[110px] flex items-start justify-center">
+                  <MetricRing
+                    percent={waterScore}
+                    icon={<Droplet size={22} />}
+                    size={80}
+                  />
+                </div>
                 <span className="text-[11px] text-slate-500">{waterLabel}</span>
-                <span className="text-[11px] text-slate-400 italic">
+                <span className="text-[11px] text-slate-400 italic text-center">
                   {waterSummary}
                 </span>
               </div>
 
               {/* ETHER */}
-              <div className="flex flex-col items-center justify-center gap-2">
-                <MetricRing percent={etherScore} icon={<Zap size={22} />} size={80} />
+              <div className="flex flex-col items-center gap-2 pt-2">
+                <div className="h-[110px] flex items-start justify-center">
+                  <MetricRing
+                    percent={etherScore}
+                    icon={<Zap size={22} />}
+                    size={80}
+                  />
+                </div>
                 <span className="text-[11px] text-slate-500">
                   {etherLabel(etherScore)}
                 </span>
-                <span className="text-[11px] text-slate-400 italic">
+                <span className="text-[11px] text-slate-400 italic text-center">
                   {etherSummary}
                 </span>
               </div>
