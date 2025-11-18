@@ -1099,27 +1099,29 @@ export default function ReportPage() {
 
               <span className="text-slate-400">·</span>
 
-              <a
-                href="https://www.airnow.gov/?city=Houston&state=TX&zipcode=77007"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="relative group flex items-center gap-1 text-[11px] font-medium text-blue-600 hover:text-blue-700"
-              >
-                <span className="shadow-[0_0_2px_rgba(0,0,0,0.1)]">
-                  Local Air Risks
-                </span>
+              <div className="relative">
+                <a
+                  href="https://www.airnow.gov/?city=Houston&state=TX&zipcode=77007"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="peer flex items-center gap-1 text-[11px] font-medium text-blue-600 hover:text-blue-700"
+                >
+                  <span className="shadow-[0_0_2px_rgba(0,0,0,0.1)]">
+                    Local Air Risks
+                  </span>
 
-                <Info
-                  size={13}
-                  className="text-blue-600 group-hover:text-blue-700"
-                />
+                  <Info
+                    size={13}
+                    className="text-blue-600 peer-hover:text-blue-700"
+                  />
+                </a>
 
-                <div className="absolute left-0 top-5 z-20 w-56 rounded-md bg-slate-900 p-2 text-[11px] text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
-                  Outdoor pollution, pollen, and ventilation patterns all
-                  influence indoor CO₂ and particulate levels. Click to view
-                  local environmental conditions.
+                <div className="pointer-events-none absolute left-0 top-5 z-20 w-56 rounded-md bg-slate-900 p-2 text-[11px] text-white opacity-0 shadow-lg transition-opacity peer-hover:opacity-100">
+                  Houston’s 2025 air data shows PM₂.₅ and refinery chemicals like
+		  benzene and formaldehyde reaching 10–30× above health guidelines,
+		  a level associated with increased long-term health risks.
                 </div>
-              </a>
+              </div>
             </div>
 
             <ExpandableCard
@@ -1296,28 +1298,29 @@ export default function ReportPage() {
 
               <span className="text-slate-400">·</span>
 
-              <a
-                href="https://www.houstonpublicworks.org/sites/g/files/nwywnm456/files/doc/003_2024_houston_water_quality_report_08.13.2025.pdf"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="relative group flex items-center gap-1 text-[11px] font-medium text-blue-600 hover:text-blue-700"
-              >
-                <span className="shadow-[0_0_2px_rgba(0,0,0,0.1)]">
-                  Local Water Risks
-                </span>
+              <div className="relative">
+                <a
+                  href="https://www.houstonpublicworks.org/sites/g/files/nwywnm456/files/doc/003_2024_houston_water_quality_report_08.13.2025.pdf"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="peer flex items-center gap-1 text-[11px] font-medium text-blue-600 hover:text-blue-700"
+                >
+                  <span className="shadow-[0_0_2px_rgba(0,0,0,0.1)]">
+                    Local Water Risks
+                  </span>
 
-                <Info
-                  size={13}
-                  className="text-blue-600 group-hover:text-blue-700"
-                />
+                  <Info
+                    size={13}
+                    className="text-blue-600 peer-hover:text-blue-700"
+                  />
+                </a>
 
-                <div className="absolute left-0 top-5 z-20 w-56 rounded-md bg-slate-900 p-2 text-[11px] text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
-                  Municipal water varies by source, treatment method, and
-                  distribution system age. Learn the key factors that influence
-                  chlorine levels, minerals, taste, and potential contaminants
-                  in Houston’s network.
+                <div className="pointer-events-none absolute left-0 top-5 z-20 w-56 rounded-md bg-slate-900 p-2 text-[11px] text-white opacity-0 shadow-lg transition-opacity peer-hover:opacity-100">
+                  Houston’s latest report shows multiple homes tested above the
+		  federal action level for lead – a contaminant linked to IQ loss, 
+		  behavioral problems, and irreversible neurological damage in children.
                 </div>
-              </a>
+              </div>
             </div>
 
             <ExpandableCard
@@ -1445,28 +1448,30 @@ export default function ReportPage() {
 
               <span className="text-slate-400">·</span>
 
-              <a
-                href="https://www.antennasearch.com/HTML/search/search.php?address=77007"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="relative group flex items-center gap-1 text-[11px] font-medium text-blue-600 hover:text-blue-700"
-              >
-                <span className="shadow-[0_0_2px_rgba(0,0,0,0.1)]">
-                  Local EMF Context
-                </span>
+              <div className="relative">
+                <a
+                  href="https://www.antennasearch.com/HTML/search/search.php?address=77007"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="peer flex items-center gap-1 text-[11px] font-medium text-blue-600 hover:text-blue-700"
+                >
+                  <span className="shadow-[0_0_2px_rgba(0,0,0,0.1)]">
+                    Local EMF Context
+                  </span>
 
-                <Info
-                  size={13}
-                  className="text-blue-600 group-hover:text-blue-700"
-                />
+                  <Info
+                    size={13}
+                    className="text-blue-600 peer-hover:text-blue-700"
+                  />
+                </a>
 
-                <div className="absolute left-0 top-5 z-20 w-56 rounded-md bg-slate-900 p-2 text-[11px] text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
+                <div className="pointer-events-none absolute left-0 top-5 z-20 w-56 rounded-md bg-slate-900 p-2 text-[11px] text-white opacity-0 shadow-lg transition-opacity peer-hover:opacity-100">
                   Nearby cell towers, building wiring patterns, and power
                   infrastructure all contribute to background EMF exposure.
                   Click to view the electromagnetic environment around your
                   home.
                 </div>
-              </a>
+              </div>
             </div>
 
             <ExpandableCard
